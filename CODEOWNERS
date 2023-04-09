@@ -1157,6 +1157,8 @@ build.json @home-assistant/supervisor
 /tests/components/stookwijzer/ @fwestenberg
 /homeassistant/components/stream/ @hunterjm @uvjustin @allenporter
 /tests/components/stream/ @hunterjm @uvjustin @allenporter
+/homeassistant/components/streamdeck/ @Patrick762
+/tests/components/streamdeck/ @Patrick762
 /homeassistant/components/stt/ @home-assistant/core @pvizeli
 /tests/components/stt/ @home-assistant/core @pvizeli
 /homeassistant/components/subaru/ @G-Two
