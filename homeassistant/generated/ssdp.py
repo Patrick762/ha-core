@@ -258,6 +258,11 @@ SSDP = {
             "st": "urn:schemas-upnp-org:device:ZonePlayer:1",
         },
     ],
+    "streamdeck": [
+        {
+            "st": "urn:home-assistant.io:device:stream-deck",
+        },
+    ],
     "syncthru": [
         {
             "deviceType": "urn:schemas-upnp-org:device:Printer:1",
