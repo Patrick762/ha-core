@@ -1,11 +1,20 @@
 """Stream Deck API."""
 
+import json
 import logging
+import re
 
 import requests
+from websockets.client import connect
+from websockets.exceptions import WebSocketException
 
+from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .const import DOMAIN, MANUFACTURER
 
 PLUGIN_PORT = 6153
 PLUGIN_INFO = "/sd/info"
@@ -76,7 +85,7 @@ class SDButton:
         self.svg = obj["svg"]
 
 
-class SDInfo:
+class SDInfo(dict):
     """Stream Deck Info Type."""
 
     uuid: str
@@ -86,6 +95,7 @@ class SDInfo:
 
     def __init__(self, obj: dict) -> None:
         """Init Stream Deck Info object."""
+        dict.__init__(self, obj)
         if obj["uuid"]:
             self.uuid = obj["uuid"]
         self.application = SDApplication(obj["application"])
@@ -93,6 +103,36 @@ class SDInfo:
             self.devices.append(SDDevice(device))
         for _id in obj["buttons"]:
             self.buttons.update({_id: SDButton(obj["buttons"][_id])})
+
+
+class SDWebsocketMessage:
+    """Stream Deck Websocket Message Type."""
+
+    event: str
+    args: SDInfo | str | dict
+
+    def __init__(self, obj: dict) -> None:
+        """Init Stream Deck Websocket Message object."""
+        self.event = obj["event"]
+        if obj["args"] == {}:
+            self.args = {}
+            return
+        if isinstance(obj["args"], str):
+            self.args = obj["args"]
+            return
+        self.args = SDInfo(obj["args"])
+
+
+class StreamDeckButton(BinarySensorEntity):
+    """Stream Deck Button sensor."""
+
+    def __init__(
+        self, entry_title: str, device: DeviceInfo | None, button: SDButton
+    ) -> None:
+        """Initialize the binary sensor."""
+        self._attr_name = f"{entry_title} {button.uuid}"
+        self._attr_unique_id = StreamDeck.get_unique_id(self._attr_name)
+        self._attr_device_info = device
 
 
 #
@@ -118,6 +158,11 @@ class StreamDeck:
             self.host = entry.data.get("host", "")
         else:
             self.host = ""
+        self._async_add_binary_sensors: AddEntitiesCallback | None = None
+
+    #
+    #   Properties
+    #
 
     @property
     def info_url(self) -> str:
@@ -133,6 +178,27 @@ class StreamDeck:
     def websocket_url(self) -> str:
         """URL to websocket."""
         return f"ws://{self.host}:{PLUGIN_PORT}"
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        """Device info."""
+        if self.entry is None:
+            return None
+
+        return DeviceInfo(
+            identifiers={
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, self.entry.data.get("host", ""))
+            },
+            name=self.entry.data.get("name", None),
+            manufacturer=MANUFACTURER,
+            model=self.entry.data.get("model", None),
+            sw_version=self.entry.data.get("version", None),
+        )
+
+    #
+    #   API Methods
+    #
 
     @staticmethod
     def get_request(url: str) -> bool | requests.Response:
@@ -203,6 +269,67 @@ class StreamDeck:
         )
         return isinstance(res, requests.Response) and res.status_code == 200
 
+    def on_button_change(self, uuid: str | dict, state: str):
+        """Handle button down event."""
+        if self.entry is None:
+            return
+        if not isinstance(uuid, str):
+            return
+        self.hass.states.async_set(
+            "binary_sensor." + self.get_unique_id(f"{self.entry.title} {uuid}"), state
+        )
+
+    def on_message(self, msg: str):
+        """Handle websocket messages."""
+        if not isinstance(msg, str):
+            return
+
+        _LOGGER.debug(msg)
+
+        try:
+            datajson = json.loads(msg)
+        except json.JSONDecodeError:
+            _LOGGER.warning("Websocket message couldn't get parsed")
+            return
+        try:
+            data = SDWebsocketMessage(datajson)
+        except KeyError:
+            _LOGGER.warning(
+                "Websocket message couldn't get parsed to SDWebsocketMessage"
+            )
+            return
+
+        self.hass.bus.async_fire(
+            f"streamdeck-{data.event}", {"host": self.host, "data": data.args}
+        )
+
+        match data.event:
+            case "keyDown":
+                self.on_button_change(data.args, "on")
+            case "keyUp":
+                self.on_button_change(data.args, "off")
+            case _:
+                _LOGGER.debug(
+                    "Unknown event from Stream Deck Plugin received (%s)", data.event
+                )
+
+    async def websocket_loop(self):
+        """Start the websocket client."""
+        while True:
+            info = await self.get_info()
+            if isinstance(info, SDInfo):
+                _LOGGER.info("Streamdeck online")
+                try:
+                    async with connect(self.websocket_url) as websocket:
+                        try:
+                            while True:
+                                data = await websocket.recv()
+                                self.on_message(data)
+                        except WebSocketException:
+                            _LOGGER.warning("Websocket client crashed. Restarting it")
+                except WebSocketException:
+                    _LOGGER.warning("Websocket client not connecting. Restarting it")
+
     #
     #   Tools
     #
@@ -222,3 +349,34 @@ class StreamDeck:
         if size.columns == 8 and size.rows == 4:
             return "Stream Deck XL"
         return "Unknown"
+
+    @staticmethod
+    def get_unique_id(name: str):
+        """Generate an unique id."""
+        res = re.sub("[^A-Za-z0-9]+", "_", name).lower()
+        return res
+
+    async def add_entities(self, binary: AddEntitiesCallback | None = None):
+        """Add entities."""
+        if binary is not None:
+            self._async_add_binary_sensors = binary
+
+        if self.entry is None:
+            return
+
+        info = await self.get_info()
+        if isinstance(info, bool):
+            return
+
+        if self._async_add_binary_sensors is not None:
+            binary_sensors: list[StreamDeckButton] = []
+            for _, button in info.buttons.items():
+                binary_sensors.append(
+                    StreamDeckButton(self.entry.title, self.device_info, button)
+                )
+            self._async_add_binary_sensors(binary_sensors, True)
+            _LOGGER.debug(
+                "Loaded streamdeck entities (%d binary sensors)", len(binary_sensors)
+            )
+            for _, button in info.buttons.items():
+                self.on_button_change(button.uuid, "off")
