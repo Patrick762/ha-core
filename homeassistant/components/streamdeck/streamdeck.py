@@ -9,6 +9,7 @@ from websockets.client import connect
 from websockets.exceptions import WebSocketException
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
@@ -123,6 +124,11 @@ class SDWebsocketMessage:
         self.args = SDInfo(obj["args"])
 
 
+#
+#   Binary sensors
+#
+
+
 class StreamDeckButton(BinarySensorEntity):
     """Stream Deck Button sensor."""
 
@@ -131,8 +137,41 @@ class StreamDeckButton(BinarySensorEntity):
     ) -> None:
         """Initialize the binary sensor."""
         self._attr_name = f"{entry_title} {button.uuid}"
-        self._attr_unique_id = StreamDeck.get_unique_id(self._attr_name)
+        self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {button.uuid}")
         self._attr_device_info = device
+        self._attr_is_on = False
+
+
+#
+#   Select sensors
+#
+
+
+class StreamDeckSelect(SelectEntity):
+    """Stream Deck Select sensor."""
+
+    def __init__(
+        self, entry_title: str, device: DeviceInfo | None, button: SDButton
+    ) -> None:
+        """Init the select sensor."""
+        self._attr_name = f"{entry_title} {button.uuid}"
+        self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {button.uuid}")
+        self._attr_device_info = device
+        self._attr_current_option = ""
+
+    @property
+    def options(self) -> list[str]:
+        """Return a set of selectable options."""
+        states = self.hass.states.async_all()
+        entities: list[str] = []
+        for state in states:
+            if state.domain == "binary_sensor":
+                entities.append(state.entity_id)
+        return entities
+
+    async def async_select_option(self, option: str) -> None:
+        """Change the selected option."""
+        _LOGGER.debug("Changed select to %s", option)
 
 
 #
@@ -159,6 +198,7 @@ class StreamDeck:
         else:
             self.host = ""
         self._async_add_binary_sensors: AddEntitiesCallback | None = None
+        self._async_add_select_sensors: AddEntitiesCallback | None = None
 
     #
     #   Properties
@@ -356,10 +396,22 @@ class StreamDeck:
         res = re.sub("[^A-Za-z0-9]+", "_", name).lower()
         return res
 
-    async def add_entities(self, binary: AddEntitiesCallback | None = None):
+    async def add_entities(
+        self,
+        binary: AddEntitiesCallback | None = None,
+        select: AddEntitiesCallback | None = None,
+    ):
         """Add entities."""
+        new_binary_sensors = False
+        new_select_sensors = False
+
         if binary is not None:
             self._async_add_binary_sensors = binary
+            new_binary_sensors = True
+
+        if select is not None:
+            self._async_add_select_sensors = select
+            new_select_sensors = True
 
         if self.entry is None:
             return
@@ -368,15 +420,26 @@ class StreamDeck:
         if isinstance(info, bool):
             return
 
-        if self._async_add_binary_sensors is not None:
+        if self._async_add_binary_sensors is not None and new_binary_sensors:
             binary_sensors: list[StreamDeckButton] = []
             for _, button in info.buttons.items():
-                binary_sensors.append(
-                    StreamDeckButton(self.entry.title, self.device_info, button)
+                binary_sensor = StreamDeckButton(
+                    self.entry.title, self.device_info, button
                 )
+                binary_sensors.append(binary_sensor)
             self._async_add_binary_sensors(binary_sensors, True)
             _LOGGER.debug(
                 "Loaded streamdeck entities (%d binary sensors)", len(binary_sensors)
             )
+
+        if self._async_add_select_sensors is not None and new_select_sensors:
+            select_sensors: list[StreamDeckSelect] = []
             for _, button in info.buttons.items():
-                self.on_button_change(button.uuid, "off")
+                select_sensor = StreamDeckSelect(
+                    self.entry.title, self.device_info, button
+                )
+                select_sensors.append(select_sensor)
+            self._async_add_select_sensors(select_sensors, True)
+            _LOGGER.debug(
+                "Loaded streamdeck entities (%d select sensors)", len(select_sensors)
+            )
