@@ -199,6 +199,7 @@ class StreamDeck:
             self.host = ""
         self._async_add_binary_sensors: AddEntitiesCallback | None = None
         self._async_add_select_sensors: AddEntitiesCallback | None = None
+        self._running = False
 
     #
     #   Properties
@@ -355,20 +356,27 @@ class StreamDeck:
 
     async def websocket_loop(self):
         """Start the websocket client."""
-        while True:
+        self._running = True
+        while self._running:
             info = await self.get_info()
             if isinstance(info, SDInfo):
                 _LOGGER.info("Streamdeck online")
                 try:
                     async with connect(self.websocket_url) as websocket:
                         try:
-                            while True:
+                            while self._running:
                                 data = await websocket.recv()
                                 self.on_message(data)
+                            await websocket.close()
+                            _LOGGER.info("Websocket closed")
                         except WebSocketException:
                             _LOGGER.warning("Websocket client crashed. Restarting it")
                 except WebSocketException:
                     _LOGGER.warning("Websocket client not connecting. Restarting it")
+
+    def stop(self):
+        """Stop the websocket client."""
+        self._running = False
 
     #
     #   Tools
