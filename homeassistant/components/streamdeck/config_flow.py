@@ -20,6 +20,12 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
 
     host: str | None = None
 
+    async def async_step_ignore(self, user_input: dict[str, Any]) -> FlowResult:
+        """Ignore this config flow."""
+        self.host = user_input.get("host", "")
+        await self.async_set_unique_id(self.host)
+        return self.async_create_entry(title=user_input["name"], data={})
+
     async def async_step_ssdp(self, discovery_info: ssdp.SsdpServiceInfo) -> FlowResult:
         """Handle ssdp discovery flow."""
         location = discovery_info.ssdp_location

@@ -11,6 +11,7 @@ from websockets.exceptions import WebSocketException
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -165,7 +166,7 @@ class StreamDeckSelect(SelectEntity):
         states = self.hass.states.async_all()
         entities: list[str] = []
         for state in states:
-            if state.domain == "binary_sensor":
+            if state.domain == Platform.BINARY_SENSOR:
                 entities.append(state.entity_id)
         return entities
 
