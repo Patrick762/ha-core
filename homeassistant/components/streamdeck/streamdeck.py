@@ -11,8 +11,8 @@ from websockets.exceptions import WebSocketException
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_STATE_CHANGED
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -20,7 +20,7 @@ from .const import DOMAIN, MANUFACTURER
 
 PLUGIN_PORT = 6153
 PLUGIN_INFO = "/sd/info"
-PLUGIN_ICON = "/sd/icon/"
+PLUGIN_ICON = "/sd/icon"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -152,27 +152,36 @@ class StreamDeckSelect(SelectEntity):
     """Stream Deck Select sensor."""
 
     def __init__(
-        self, entry_title: str, device: DeviceInfo | None, button: SDButton
+        self,
+        entry_title: str,
+        device: DeviceInfo | None,
+        button: SDButton,
+        entry_id: str,
     ) -> None:
         """Init the select sensor."""
         self._attr_name = f"{entry_title} {button.uuid}"
         self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {button.uuid}")
         self._attr_device_info = device
         self._attr_current_option = ""
+        self._sd_entry_id = entry_id
+        self._btn_uuid = button.uuid
 
     @property
     def options(self) -> list[str]:
         """Return a set of selectable options."""
+        # NOT UPDATING EVERY TIME A NEW ENTITY IS ADDED!!!
         states = self.hass.states.async_all()
         entities: list[str] = []
         for state in states:
-            if state.domain == Platform.BINARY_SENSOR:
-                entities.append(state.entity_id)
+            entities.append(state.entity_id)
         return entities
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
         _LOGGER.debug("Changed select to %s", option)
+        api: StreamDeck = self.hass.data[DOMAIN][self._sd_entry_id]
+        await api.set_button_entity(self._btn_uuid, option)
+        self._attr_current_option = option
 
 
 #
@@ -201,6 +210,8 @@ class StreamDeck:
         self._async_add_binary_sensors: AddEntitiesCallback | None = None
         self._async_add_select_sensors: AddEntitiesCallback | None = None
         self._running = False
+        self._stop_listener: CALLBACK_TYPE | None = None
+        self._button_dict: dict[str, str] = {}
 
     #
     #   Properties
@@ -268,7 +279,7 @@ class StreamDeck:
             _LOGGER.error("Error sending data to Stream Deck Plugin (exception)")
             return False
         if res.status_code != 200:
-            _LOGGER.error("Error sending data to Stream Deck Plugin (response code)")
+            _LOGGER.error("Error sending data to Stream Deck Plugin (%s)", res.reason)
             return False
         return res
 
@@ -375,9 +386,45 @@ class StreamDeck:
                 except WebSocketException:
                     _LOGGER.warning("Websocket client not connecting. Restarting it")
 
+    async def on_entity_state_change(self, event: Event):
+        """Handle entity state changes."""
+        entity_id = event.data.get("entity_id")
+        _LOGGER.info(entity_id)
+        _LOGGER.info(len(self._button_dict))
+        if entity_id is None:
+            return
+        if entity_id not in self._button_dict.values():
+            return
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            return
+        for uuid, entity in self._button_dict.items():
+            if entity == entity_id:
+                await self.update_icon(
+                    uuid,
+                    f"""<svg xmlns="http://www.w3.org/2000/svg" height="144" width="144">
+                    <rect width="144" height="144" fill="green" />
+                    <text x="10" y="120" font-size="28px" fill="white">{state.state}</text>
+                    </svg>""",
+                )
+
+    def start(self):
+        """Start the streamdeck client."""
+        _LOGGER.info("Starting Stream Deck Websocket")
+        self.hass.async_create_background_task(
+            self.websocket_loop(), f"{self.entry.entry_id}_websocket"
+        )
+        _LOGGER.info("Stream Deck Websocket started")
+        _LOGGER.info("Starting Stream Deck Entity change listener")
+        self._stop_listener = self.hass.bus.async_listen(
+            EVENT_STATE_CHANGED, self.on_entity_state_change
+        )
+        _LOGGER.info("Stream Deck Entity change listener started")
+
     def stop(self):
-        """Stop the websocket client."""
+        """Stop the streamdeck client."""
         self._running = False
+        self._stop_listener()
 
     #
     #   Tools
@@ -445,10 +492,24 @@ class StreamDeck:
             select_sensors: list[StreamDeckSelect] = []
             for _, button in info.buttons.items():
                 select_sensor = StreamDeckSelect(
-                    self.entry.title, self.device_info, button
+                    self.entry.title, self.device_info, button, self.entry.entry_id
                 )
                 select_sensors.append(select_sensor)
             self._async_add_select_sensors(select_sensors, True)
             _LOGGER.debug(
                 "Loaded streamdeck entities (%d select sensors)", len(select_sensors)
             )
+
+    async def set_button_entity(self, uuid: str, entity_id: str):
+        """Add an entity to a button."""
+        self._button_dict[uuid] = entity_id
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            return
+        await self.update_icon(
+            uuid,
+            f"""<svg xmlns="http://www.w3.org/2000/svg" height="144" width="144">
+            <rect width="144" height="144" fill="green" />
+            <text x="10" y="120" font-size="28px" fill="white">{state.state}</text>
+            </svg>""",
+        )

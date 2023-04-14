@@ -29,11 +29,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    _LOGGER.info("Starting Stream Deck Websocket")
-    hass.async_create_background_task(
-        api.websocket_loop(), f"{entry.entry_id}_websocket"
-    )
-    _LOGGER.info("Stream Deck Websocket started")
+    api.start()
 
     return True
 
