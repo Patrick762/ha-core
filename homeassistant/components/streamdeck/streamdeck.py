@@ -1,5 +1,7 @@
 """Stream Deck API."""
 
+# Uses https://www.mdisvg.com/
+
 import json
 import logging
 import re
@@ -11,7 +13,7 @@ from websockets.exceptions import WebSocketException
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_STATE_CHANGED
+from homeassistant.const import ATTR_ICON, EVENT_STATE_CHANGED
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -396,6 +398,7 @@ class StreamDeck:
         if entity_id not in self._button_dict.values():
             return
         state = self.hass.states.get(entity_id)
+        icon = await self.get_entity_icon(entity_id)
         if state is None:
             return
         for uuid, entity in self._button_dict.items():
@@ -404,7 +407,7 @@ class StreamDeck:
                     uuid,
                     f"""<svg xmlns="http://www.w3.org/2000/svg" height="144" width="144">
                     <rect width="144" height="144" fill="green" />
-                    <text x="10" y="120" font-size="28px" fill="white">{state.state}</text>
+                    <g x="10" y="10">{icon}</g>
                     </svg>""",
                 )
 
@@ -429,6 +432,22 @@ class StreamDeck:
     #
     #   Tools
     #
+
+    async def get_mdi_icon_svg(self, mdi_string: str) -> str:
+        """Get an mdi icon as svg string."""
+        url = f"https://api.mdisvg.com/v1/i/{mdi_string}"
+        default_svg = ""
+        try:
+            res = await self.hass.async_add_executor_job(requests.get, url)
+        except requests.RequestException:
+            _LOGGER.error("Error retrieving data from MDI API")
+            return default_svg
+        if res.status_code != 200:
+            _LOGGER.error(
+                "Error retrieving data from MDI API. (status_code: %s)", res.status_code
+            )
+            return default_svg
+        return res.text
 
     @staticmethod
     def get_model(info: SDInfo) -> str:
@@ -504,12 +523,22 @@ class StreamDeck:
         """Add an entity to a button."""
         self._button_dict[uuid] = entity_id
         state = self.hass.states.get(entity_id)
+        icon = await self.get_entity_icon(entity_id)
         if state is None:
             return
         await self.update_icon(
             uuid,
             f"""<svg xmlns="http://www.w3.org/2000/svg" height="144" width="144">
             <rect width="144" height="144" fill="green" />
-            <text x="10" y="120" font-size="28px" fill="white">{state.state}</text>
+            <g x="10" y="10">{icon}</g>
             </svg>""",
         )
+
+    async def get_entity_icon(self, entity_id: str) -> str:
+        """Get icon of entity."""
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            return await self.get_mdi_icon_svg("help")
+        icon = state.attributes.get(ATTR_ICON, "help")
+        svg = await self.get_mdi_icon_svg(icon)
+        return svg
