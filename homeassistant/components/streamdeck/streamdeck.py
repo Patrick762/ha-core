@@ -13,7 +13,7 @@ from websockets.exceptions import WebSocketException
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ICON, EVENT_STATE_CHANGED
+from homeassistant.const import EVENT_STATE_CHANGED, STATE_OFF, STATE_ON
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -281,7 +281,10 @@ class StreamDeck:
             _LOGGER.error("Error sending data to Stream Deck Plugin (exception)")
             return False
         if res.status_code != 200:
-            _LOGGER.error("Error sending data to Stream Deck Plugin (%s)", res.reason)
+            _LOGGER.info(
+                "Error sending data to Stream Deck Plugin (%s). Is the button currently visible?",
+                res.reason,
+            )
             return False
         return res
 
@@ -391,25 +394,19 @@ class StreamDeck:
     async def on_entity_state_change(self, event: Event):
         """Handle entity state changes."""
         entity_id = event.data.get("entity_id")
-        _LOGGER.info(entity_id)
-        _LOGGER.info(len(self._button_dict))
         if entity_id is None:
             return
         if entity_id not in self._button_dict.values():
             return
         state = self.hass.states.get(entity_id)
-        icon = await self.get_entity_icon(entity_id)
         if state is None:
             return
+        icon = await self.build_button_icon(
+            state.name, state.attributes.get("icon", "help"), state.state
+        )
         for uuid, entity in self._button_dict.items():
             if entity == entity_id:
-                await self.update_icon(
-                    uuid,
-                    f"""<svg xmlns="http://www.w3.org/2000/svg" height="144" width="144">
-                    <rect width="144" height="144" fill="green" />
-                    <g x="10" y="10">{icon}</g>
-                    </svg>""",
-                )
+                await self.update_icon(uuid, icon)
 
     def start(self):
         """Start the streamdeck client."""
@@ -433,9 +430,13 @@ class StreamDeck:
     #   Tools
     #
 
-    async def get_mdi_icon_svg(self, mdi_string: str) -> str:
+    async def get_mdi_icon_svg(self, mdi_string: str, color: str) -> str:
         """Get an mdi icon as svg string."""
-        url = f"https://api.mdisvg.com/v1/i/{mdi_string}"
+        # Add caching
+        if mdi_string.startswith("mdi:"):
+            mdi_string = mdi_string.split(":", 1)[1]
+        url = f"https://api.mdisvg.com/v2/i/{mdi_string}?color={color}"
+        _LOGGER.info("Loading mdi icon from %s", url)
         default_svg = ""
         try:
             res = await self.hass.async_add_executor_job(requests.get, url)
@@ -448,6 +449,30 @@ class StreamDeck:
             )
             return default_svg
         return res.text
+
+    async def build_button_icon(
+        self,
+        name: str,
+        mdi_string: str,
+        status: str,
+        bg_color: str = "000",
+        icon_color: str = "fff",
+        color: str = "fff",
+    ) -> str:
+        """Build the svg icon for a button."""
+        # Limit name and status len
+        if status == STATE_ON:
+            icon_color = "0e0"
+        elif status == STATE_OFF:
+            icon_color = "e00"
+        mdi = await self.get_mdi_icon_svg(mdi_string, icon_color)
+        svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+            <rect width="72" height="72" fill="#{bg_color}" />
+            <text text-anchor="middle" x="35" y="15" fill="#{color}" font-size="12">{name}</text>
+            <text text-anchor="middle" x="35" y="65" fill="#{color}" font-size="12">{status}</text>
+            <g transform="translate(16, 18) scale(0.5)">{mdi}</g>
+            </svg>"""
+        return svg
 
     @staticmethod
     def get_model(info: SDInfo) -> str:
@@ -523,22 +548,9 @@ class StreamDeck:
         """Add an entity to a button."""
         self._button_dict[uuid] = entity_id
         state = self.hass.states.get(entity_id)
-        icon = await self.get_entity_icon(entity_id)
         if state is None:
             return
-        await self.update_icon(
-            uuid,
-            f"""<svg xmlns="http://www.w3.org/2000/svg" height="144" width="144">
-            <rect width="144" height="144" fill="green" />
-            <g x="10" y="10">{icon}</g>
-            </svg>""",
+        icon = await self.build_button_icon(
+            state.name, state.attributes.get("icon", "help"), state.state
         )
-
-    async def get_entity_icon(self, entity_id: str) -> str:
-        """Get icon of entity."""
-        state = self.hass.states.get(entity_id)
-        if state is None:
-            return await self.get_mdi_icon_svg("help")
-        icon = state.attributes.get(ATTR_ICON, "help")
-        svg = await self.get_mdi_icon_svg(icon)
-        return svg
+        await self.update_icon(uuid, icon)
