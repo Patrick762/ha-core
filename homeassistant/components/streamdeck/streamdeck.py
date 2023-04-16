@@ -13,7 +13,7 @@ from websockets.exceptions import WebSocketException
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_STATE_CHANGED, STATE_OFF, STATE_ON
+from homeassistant.const import EVENT_STATE_CHANGED, STATE_OFF, STATE_ON, Platform
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -172,10 +172,7 @@ class StreamDeckSelect(SelectEntity):
     def options(self) -> list[str]:
         """Return a set of selectable options."""
         # NOT UPDATING EVERY TIME A NEW ENTITY IS ADDED!!!
-        states = self.hass.states.async_all()
-        entities: list[str] = []
-        for state in states:
-            entities.append(state.entity_id)
+        entities: list[str] = self.hass.states.async_entity_ids()
         return entities
 
     async def async_select_option(self, option: str) -> None:
@@ -333,9 +330,22 @@ class StreamDeck:
             return
         if not isinstance(uuid, str):
             return
-        self.hass.states.async_set(
-            "binary_sensor." + self.get_unique_id(f"{self.entry.title} {uuid}"), state
-        )
+        if state == "off":
+            return
+        if self._button_dict[uuid] is None:
+            return
+        allowed_types: tuple = (Platform.SWITCH, "input_boolean")
+        if self._button_dict[uuid].startswith(allowed_types):
+            entity_id = self._button_dict[uuid]
+            current_state = self.hass.states.get(entity_id)
+            if state is not None:
+                return
+            new_state = current_state.state
+            if current_state.state == STATE_ON:
+                new_state = STATE_OFF
+            elif current_state.state == STATE_OFF:
+                new_state = STATE_ON
+            self.hass.states.async_set(entity_id, new_state, current_state.attributes)
 
     def on_message(self, msg: str):
         """Handle websocket messages."""
