@@ -64,6 +64,7 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
                     "host": self.host,
                     "model": StreamDeck.get_model(info),
                     "version": info.application.version,
+                    "buttons": {},
                 }
                 return self.async_create_entry(title=user_input["name"], data=data)
 

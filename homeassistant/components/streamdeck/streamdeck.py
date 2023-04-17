@@ -135,12 +135,10 @@ class SDWebsocketMessage:
 class StreamDeckButton(BinarySensorEntity):
     """Stream Deck Button sensor."""
 
-    def __init__(
-        self, entry_title: str, device: DeviceInfo | None, button: SDButton
-    ) -> None:
+    def __init__(self, entry_title: str, device: DeviceInfo | None, uuid: str) -> None:
         """Initialize the binary sensor."""
-        self._attr_name = f"{entry_title} {button.uuid}"
-        self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {button.uuid}")
+        self._attr_name = f"{entry_title} {uuid}"
+        self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {uuid}")
         self._attr_device_info = device
         self._attr_is_on = False
 
@@ -157,16 +155,17 @@ class StreamDeckSelect(SelectEntity):
         self,
         entry_title: str,
         device: DeviceInfo | None,
-        button: SDButton,
+        uuid: str,
         entry_id: str,
+        initial: str = "",
     ) -> None:
         """Init the select sensor."""
-        self._attr_name = f"{entry_title} {button.uuid}"
-        self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {button.uuid}")
+        self._attr_name = f"{entry_title} {uuid}"
+        self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {uuid}")
         self._attr_device_info = device
-        self._attr_current_option = ""
+        self._attr_current_option = initial
         self._sd_entry_id = entry_id
-        self._btn_uuid = button.uuid
+        self._btn_uuid = uuid
 
     @property
     def options(self) -> list[str]:
@@ -324,28 +323,51 @@ class StreamDeck:
         )
         return isinstance(res, requests.Response) and res.status_code == 200
 
+    #
+    #   Websocket Methods
+    #
+
     def on_button_change(self, uuid: str | dict, state: str):
         """Handle button down event."""
         if self.entry is None:
+            _LOGGER.debug("Method on_button_change: entry is None")
             return
         if not isinstance(uuid, str):
+            _LOGGER.debug("Method on_button_change: uuid is not str")
             return
+        # Update binary sensor of button
+        button_entity = StreamDeck.get_unique_id(
+            f"{self.entry.title} {uuid}", sensor_type=Platform.BINARY_SENSOR
+        )
+        button_entity_state = self.hass.states.get(button_entity)
+        if button_entity_state is None:
+            _LOGGER.info("Method on_button_change: button_entity_state is None")
+            return
+        self.hass.states.async_set(button_entity, state, button_entity_state.attributes)
+        # Update selected entity
         if state == "off":
+            _LOGGER.debug("Method on_button_change: state is off")
             return
         if self._button_dict[uuid] is None:
+            _LOGGER.debug("Method on_button_change: dict entry is None")
             return
-        allowed_types: tuple = (Platform.SWITCH, "input_boolean")
-        if self._button_dict[uuid].startswith(allowed_types):
-            entity_id = self._button_dict[uuid]
-            current_state = self.hass.states.get(entity_id)
-            if state is not None:
-                return
-            new_state = current_state.state
-            if current_state.state == STATE_ON:
-                new_state = STATE_OFF
-            elif current_state.state == STATE_OFF:
-                new_state = STATE_ON
-            self.hass.states.async_set(entity_id, new_state, current_state.attributes)
+        if not self._button_dict[uuid].startswith((Platform.SWITCH, "input_boolean")):
+            _LOGGER.debug("Method on_button_change: selected entity can't be displayed")
+            return
+        entity_id = self._button_dict[uuid]
+        current_state = self.hass.states.get(entity_id)
+        if state is None:
+            _LOGGER.debug("Method on_button_change: state is None")
+            return
+        if current_state is None:
+            _LOGGER.debug("Method on_button_change: current_state is None")
+            return
+        new_state = current_state.state
+        if current_state.state == STATE_ON:
+            new_state = STATE_OFF
+        elif current_state.state == STATE_OFF:
+            new_state = STATE_ON
+        self.hass.states.async_set(entity_id, new_state, current_state.attributes)
 
     def on_message(self, msg: str):
         """Handle websocket messages."""
@@ -400,6 +422,10 @@ class StreamDeck:
                             _LOGGER.warning("Websocket client crashed. Restarting it")
                 except WebSocketException:
                     _LOGGER.warning("Websocket client not connecting. Restarting it")
+
+    #
+    #   Helper Methods
+    #
 
     async def on_entity_state_change(self, event: Event):
         """Handle entity state changes."""
@@ -478,8 +504,8 @@ class StreamDeck:
         mdi = await self.get_mdi_icon_svg(mdi_string, icon_color)
         svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
             <rect width="72" height="72" fill="#{bg_color}" />
-            <text text-anchor="middle" x="35" y="15" fill="#{color}" font-size="12">{name}</text>
-            <text text-anchor="middle" x="35" y="65" fill="#{color}" font-size="12">{status}</text>
+            <text text-anchor="middle" x="35" y="15" fill="#{color}" font-size="12">{status}</text>
+            <text text-anchor="middle" x="35" y="65" fill="#{color}" font-size="12">{name}</text>
             <g transform="translate(16, 18) scale(0.5)">{mdi}</g>
             </svg>"""
         return svg
@@ -501,9 +527,11 @@ class StreamDeck:
         return "Unknown"
 
     @staticmethod
-    def get_unique_id(name: str):
+    def get_unique_id(name: str, sensor_type: str | None = None):
         """Generate an unique id."""
         res = re.sub("[^A-Za-z0-9]+", "_", name).lower()
+        if sensor_type is not None:
+            return f"{sensor_type}.{res}"
         return res
 
     async def add_entities(
@@ -524,17 +552,40 @@ class StreamDeck:
             new_select_sensors = True
 
         if self.entry is None:
+            _LOGGER.debug("Method add_entities: entry is None")
             return
 
         info = await self.get_info()
         if isinstance(info, bool):
+            _LOGGER.debug("Method add_entities: Info not provided")
             return
 
+        # Read config_entry
+        self._button_dict = self.entry.data.get("buttons", {})
+        if not isinstance(self._button_dict, dict):
+            _LOGGER.warning(
+                "Invalid config_entry. Try removing and adding the device again"
+            )
+            return
+
+        # List already configured buttons
+        _LOGGER.info(
+            "Found %s buttons already configured", len(self._button_dict.keys())
+        )
+        for uuid, entity in self._button_dict.items():
+            _LOGGER.info("Button: %s, Entity: %s", uuid, entity)
+
+        # Add sensors
         if self._async_add_binary_sensors is not None and new_binary_sensors:
-            binary_sensors: list[StreamDeckButton] = []
             for _, button in info.buttons.items():
+                if button.uuid not in self._button_dict.keys():
+                    _LOGGER.info("Adding new button %s", button.uuid)
+                    self._button_dict[button.uuid] = ""
+
+            binary_sensors: list[StreamDeckButton] = []
+            for uuid in self._button_dict:
                 binary_sensor = StreamDeckButton(
-                    self.entry.title, self.device_info, button
+                    self.entry.title, self.device_info, uuid
                 )
                 binary_sensors.append(binary_sensor)
             self._async_add_binary_sensors(binary_sensors, True)
@@ -543,10 +594,19 @@ class StreamDeck:
             )
 
         if self._async_add_select_sensors is not None and new_select_sensors:
-            select_sensors: list[StreamDeckSelect] = []
             for _, button in info.buttons.items():
+                if button.uuid not in self._button_dict.keys():
+                    _LOGGER.info("Adding new button %s", button.uuid)
+                    self._button_dict[button.uuid] = ""
+
+            select_sensors: list[StreamDeckSelect] = []
+            for uuid, entity_id in self._button_dict.items():
                 select_sensor = StreamDeckSelect(
-                    self.entry.title, self.device_info, button, self.entry.entry_id
+                    self.entry.title,
+                    self.device_info,
+                    uuid,
+                    self.entry.entry_id,
+                    entity_id,
                 )
                 select_sensors.append(select_sensor)
             self._async_add_select_sensors(select_sensors, True)
@@ -554,9 +614,35 @@ class StreamDeck:
                 "Loaded streamdeck entities (%d select sensors)", len(select_sensors)
             )
 
+        # Update config_entry
+        updates = {"buttons": self._button_dict}
+        self.hass.config_entries.async_update_entry(
+            self.entry, data=self.entry.data | updates
+        )
+
     async def set_button_entity(self, uuid: str, entity_id: str):
         """Add an entity to a button."""
         self._button_dict[uuid] = entity_id
+
+        if self.entry is None:
+            _LOGGER.debug("Method set_button_entity: entry is None")
+            return
+
+        # NOT SAVING!!!
+        # Update config_entry
+        updates = {"buttons": self._button_dict}
+        self.hass.config_entries.async_update_entry(
+            self.entry, data=self.entry.data | updates
+        )
+        _LOGGER.info(
+            "Method set_button_entity: config_entry %s saved", self.entry.entry_id
+        )
+
+        # List configured buttons
+        _LOGGER.info("Found %s configured buttons ", len(self._button_dict.keys()))
+        for button, entity in self._button_dict.items():
+            _LOGGER.info("Button: %s, Entity: %s", button, entity)
+
         state = self.hass.states.get(entity_id)
         if state is None:
             return
