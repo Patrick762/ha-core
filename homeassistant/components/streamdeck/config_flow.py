@@ -8,8 +8,9 @@ import voluptuous as vol
 from homeassistant.components import ssdp
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
 
-from .const import DOMAIN
+from .const import AVAILABLE_PLATFORMS, DEFAULT_PLATFORMS, DOMAIN
 from .streamdeck import SDInfo, StreamDeck
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,14 +44,25 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if info is False or not isinstance(info, SDInfo):
                 errors["base"] = "cannot_connect"
+                data_schema = vol.Schema(
+                    {
+                        vol.Required("name", default="Stream Deck"): str,
+                        vol.Required("host", default=""): str,
+                        vol.Required(
+                            "enabled_platforms",
+                            default=DEFAULT_PLATFORMS,
+                        ): selector.SelectSelector(
+                            selector.SelectSelectorConfig(
+                                options=AVAILABLE_PLATFORMS,
+                                multiple=True,
+                                mode=selector.SelectSelectorMode.LIST,
+                            )
+                        ),
+                    }
+                )
                 return self.async_show_form(
                     step_id="user",
-                    data_schema=vol.Schema(
-                        {
-                            vol.Required("name", None, "Stream Deck"): str,
-                            vol.Required("host", None, ""): str,
-                        }
-                    ),
+                    data_schema=data_schema,
                     errors=errors,
                 )
 
@@ -64,18 +76,30 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
                     "host": self.host,
                     "model": StreamDeck.get_model(info),
                     "version": info.application.version,
+                    "enabled_platforms": user_input["enabled_platforms"],
                     "buttons": {},
                 }
                 return self.async_create_entry(title=user_input["name"], data=data)
 
+        data_schema = vol.Schema(
+            {
+                vol.Required("name", default="Stream Deck"): str,
+                vol.Required("host", default=self.host): str,
+                vol.Required(
+                    "enabled_platforms",
+                    default=DEFAULT_PLATFORMS,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=AVAILABLE_PLATFORMS,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                ),
+            }
+        )
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("name", None, "Stream Deck"): str,
-                    vol.Required("host", None, self.host): str,
-                }
-            ),
+            data_schema=data_schema,
             errors=errors,
             last_step=True,
         )

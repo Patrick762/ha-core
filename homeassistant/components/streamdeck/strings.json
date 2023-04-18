@@ -4,7 +4,8 @@
       "user": {
         "data": {
           "name": "[%key:common::config_flow::data::name%]",
-          "host": "[%key:common::config_flow::data::host%]"
+          "host": "[%key:common::config_flow::data::host%]",
+          "enabled_platforms": "Enabled Platforms"
         }
       },
       "confirm": {

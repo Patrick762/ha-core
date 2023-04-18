@@ -18,7 +18,7 @@ from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, MANUFACTURER
+from .const import DEFAULT_PLATFORMS, DOMAIN, MANUFACTURER
 
 PLUGIN_PORT = 6153
 PLUGIN_INFO = "/sd/info"
@@ -157,6 +157,7 @@ class StreamDeckSelect(SelectEntity):
         device: DeviceInfo | None,
         uuid: str,
         entry_id: str,
+        enabled_platforms: list[str],
         initial: str = "",
     ) -> None:
         """Init the select sensor."""
@@ -166,12 +167,15 @@ class StreamDeckSelect(SelectEntity):
         self._attr_current_option = initial
         self._sd_entry_id = entry_id
         self._btn_uuid = uuid
+        self._enabled_platforms = enabled_platforms
 
     @property
     def options(self) -> list[str]:
         """Return a set of selectable options."""
         # NOT UPDATING EVERY TIME A NEW ENTITY IS ADDED!!!
-        entities: list[str] = self.hass.states.async_entity_ids()
+        entities: list[str] = self.hass.states.async_entity_ids(
+            domain_filter=self._enabled_platforms
+        )
         return entities
 
     async def async_select_option(self, option: str) -> None:
@@ -606,6 +610,7 @@ class StreamDeck:
                     self.device_info,
                     uuid,
                     self.entry.entry_id,
+                    self.entry.data.get("enabled_platforms", DEFAULT_PLATFORMS),
                     entity_id,
                 )
                 select_sensors.append(select_sensor)
