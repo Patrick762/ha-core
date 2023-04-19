@@ -93,12 +93,14 @@ class SDButton:
     """Stream Deck Button Type."""
 
     uuid: str
+    device: str
     position: SDButtonPosition
     svg: str
 
     def __init__(self, obj: dict) -> None:
         """Init Stream Deck Button object."""
         self.uuid = obj["uuid"]
+        self.device = obj["device"]
         self.svg = obj["svg"]
         self.position = SDButtonPosition(obj["position"])
 
@@ -147,14 +149,22 @@ class StreamDeckButton(BinarySensorEntity):
     """Stream Deck Button sensor."""
 
     def __init__(
-        self, entry_title: str, device: DeviceInfo | None, uuid: str, position: str
+        self,
+        entry_title: str,
+        device: DeviceInfo | None,
+        uuid: str,
+        position: str,
+        button_device: str,
     ) -> None:
         """Initialize the binary sensor."""
         self._attr_name = f"{entry_title} {uuid}"
         self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {uuid}")
         self._attr_device_info = device
         self._attr_is_on = False
-        self._attr_extra_state_attributes = {"Position": position}
+        self._attr_extra_state_attributes = {
+            "Position": position,
+            "Device ID": button_device,
+        }
 
 
 #
@@ -388,6 +398,16 @@ class StreamDeck:
             new_state = STATE_ON
         self.hass.states.async_set(entity_id, new_state, current_state.attributes)
 
+    def on_status_update(self, info: SDInfo | str | dict):
+        """Handle Stream Deck status update event."""
+        if self.entry is None:
+            _LOGGER.debug("Method on_status_update: entry is None")
+            return
+        if not isinstance(info, SDInfo):
+            _LOGGER.debug("Method on_status_update: info is not SDInfo")
+            return
+        _LOGGER.info("Status OK. Updating entities and device")
+
     def on_message(self, msg: str):
         """Handle websocket messages."""
         if not isinstance(msg, str):
@@ -417,6 +437,8 @@ class StreamDeck:
                 self.on_button_change(data.args, "on")
             case "keyUp":
                 self.on_button_change(data.args, "off")
+            case "status":
+                self.on_status_update(data.args)
             case _:
                 _LOGGER.debug(
                     "Unknown event from Stream Deck Plugin received (%s)", data.event
@@ -579,11 +601,13 @@ class StreamDeck:
             _LOGGER.debug("Method add_entities: Info not provided")
             return
 
-        # Get positions of buttons
+        # Get positions and device ids of buttons
         positions: dict[str, str] = {}
+        button_devices: dict[str, str] = {}
         for _, button_info in info.buttons.items():
             pos = button_info.position
             positions[button_info.uuid] = f"{pos.x_pos}|{pos.y_pos}"
+            button_devices[button_info.uuid] = button_info.device
 
         # Read config_entry
         self._button_dict = self.entry.data.get("buttons", {})
@@ -610,8 +634,9 @@ class StreamDeck:
             binary_sensors: list[StreamDeckButton] = []
             for uuid in self._button_dict:
                 position = positions.get(uuid, "unknown")
+                button_device = button_devices.get(uuid, "unknown")
                 binary_sensor = StreamDeckButton(
-                    self.entry.title, self.device_info, uuid, position
+                    self.entry.title, self.device_info, uuid, position, button_device
                 )
                 binary_sensors.append(binary_sensor)
             self._async_add_binary_sensors(binary_sensors, True)
