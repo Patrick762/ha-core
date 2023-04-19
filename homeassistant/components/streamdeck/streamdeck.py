@@ -77,22 +77,35 @@ class SDDevice:
         self.size = SDSize(obj["size"])
 
 
+class SDButtonPosition:
+    """Stream Deck Button Position Type."""
+
+    x_pos: int
+    y_pos: int
+
+    def __init__(self, obj: dict) -> None:
+        """Init Stream Deck Button Position object."""
+        self.x_pos = obj["x"]
+        self.y_pos = obj["y"]
+
+
 class SDButton:
     """Stream Deck Button Type."""
 
     uuid: str
+    position: SDButtonPosition
     svg: str
 
     def __init__(self, obj: dict) -> None:
         """Init Stream Deck Button object."""
         self.uuid = obj["uuid"]
         self.svg = obj["svg"]
+        self.position = SDButtonPosition(obj["position"])
 
 
 class SDInfo(dict):
     """Stream Deck Info Type."""
 
-    uuid: str
     application: SDApplication
     devices: list[SDDevice] = []
     buttons: dict[str, SDButton] = {}
@@ -100,8 +113,6 @@ class SDInfo(dict):
     def __init__(self, obj: dict) -> None:
         """Init Stream Deck Info object."""
         dict.__init__(self, obj)
-        if obj["uuid"]:
-            self.uuid = obj["uuid"]
         self.application = SDApplication(obj["application"])
         for device in obj["devices"]:
             self.devices.append(SDDevice(device))
@@ -135,12 +146,15 @@ class SDWebsocketMessage:
 class StreamDeckButton(BinarySensorEntity):
     """Stream Deck Button sensor."""
 
-    def __init__(self, entry_title: str, device: DeviceInfo | None, uuid: str) -> None:
+    def __init__(
+        self, entry_title: str, device: DeviceInfo | None, uuid: str, position: str
+    ) -> None:
         """Initialize the binary sensor."""
         self._attr_name = f"{entry_title} {uuid}"
         self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {uuid}")
         self._attr_device_info = device
         self._attr_is_on = False
+        self._attr_extra_state_attributes = {"Position": position}
 
 
 #
@@ -158,10 +172,11 @@ class StreamDeckSelect(SelectEntity):
         uuid: str,
         entry_id: str,
         enabled_platforms: list[str],
+        position: str,
         initial: str = "",
     ) -> None:
         """Init the select sensor."""
-        self._attr_name = f"{entry_title} {uuid}"
+        self._attr_name = f"{entry_title} {uuid} ({position})"
         self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {uuid}")
         self._attr_device_info = device
         self._attr_current_option = initial
@@ -564,6 +579,12 @@ class StreamDeck:
             _LOGGER.debug("Method add_entities: Info not provided")
             return
 
+        # Get positions of buttons
+        positions: dict[str, str] = {}
+        for _, button_info in info.buttons.items():
+            pos = button_info.position
+            positions[button_info.uuid] = f"{pos.x_pos}|{pos.y_pos}"
+
         # Read config_entry
         self._button_dict = self.entry.data.get("buttons", {})
         if not isinstance(self._button_dict, dict):
@@ -588,8 +609,9 @@ class StreamDeck:
 
             binary_sensors: list[StreamDeckButton] = []
             for uuid in self._button_dict:
+                position = positions.get(uuid, "unknown")
                 binary_sensor = StreamDeckButton(
-                    self.entry.title, self.device_info, uuid
+                    self.entry.title, self.device_info, uuid, position
                 )
                 binary_sensors.append(binary_sensor)
             self._async_add_binary_sensors(binary_sensors, True)
@@ -605,12 +627,14 @@ class StreamDeck:
 
             select_sensors: list[StreamDeckSelect] = []
             for uuid, entity_id in self._button_dict.items():
+                position = positions.get(uuid, "unknown")
                 select_sensor = StreamDeckSelect(
                     self.entry.title,
                     self.device_info,
                     uuid,
                     self.entry.entry_id,
                     self.entry.data.get("enabled_platforms", DEFAULT_PLATFORMS),
+                    position,
                     entity_id,
                 )
                 select_sensors.append(select_sensor)
