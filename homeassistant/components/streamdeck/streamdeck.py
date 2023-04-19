@@ -1,11 +1,10 @@
 """Stream Deck API."""
 
-# Uses https://www.mdisvg.com/
-
 import json
 import logging
 import re
 
+from mdiicons import MDI
 import requests
 from websockets.client import connect
 from websockets.exceptions import WebSocketException
@@ -507,26 +506,6 @@ class StreamDeck:
     #   Tools
     #
 
-    async def get_mdi_icon_svg(self, mdi_string: str, color: str) -> str:
-        """Get an mdi icon as svg string."""
-        # Add caching
-        if mdi_string.startswith("mdi:"):
-            mdi_string = mdi_string.split(":", 1)[1]
-        url = f"https://api.mdisvg.com/v2/i/{mdi_string}?color={color}"
-        _LOGGER.info("Loading mdi icon from %s", url)
-        default_svg = ""
-        try:
-            res = await self.hass.async_add_executor_job(requests.get, url)
-        except requests.RequestException:
-            _LOGGER.error("Error retrieving data from MDI API")
-            return default_svg
-        if res.status_code != 200:
-            _LOGGER.error(
-                "Error retrieving data from MDI API. (status_code: %s)", res.status_code
-            )
-            return default_svg
-        return res.text
-
     async def build_button_icon(
         self,
         name: str,
@@ -539,10 +518,13 @@ class StreamDeck:
         """Build the svg icon for a button."""
         # Limit name and status len
         if status == STATE_ON:
-            icon_color = "0e0"
+            icon_color = "#0e0"
         elif status == STATE_OFF:
-            icon_color = "e00"
-        mdi = await self.get_mdi_icon_svg(mdi_string, icon_color)
+            icon_color = "#e00"
+
+        if mdi_string.startswith("mdi:"):
+            mdi_string = mdi_string.split(":", 1)[1]
+        mdi = MDI.get_icon(mdi_string, icon_color)
         svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
             <rect width="72" height="72" fill="#{bg_color}" />
             <text text-anchor="middle" x="35" y="15" fill="#{color}" font-size="12">{status}</text>

@@ -1106,6 +1106,9 @@ mbddns==0.1.2
 # homeassistant.components.minecraft_server
 mcstatus==6.0.0
 
+# homeassistant.components.streamdeck
+mdiicons==0.0.2
+
 # homeassistant.components.meater
 meater-python==0.0.8
 
