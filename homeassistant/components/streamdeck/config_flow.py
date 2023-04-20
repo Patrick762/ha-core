@@ -15,7 +15,9 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import device_registry as dr, selector
 
 from .const import AVAILABLE_PLATFORMS, DEFAULT_PLATFORMS, DOMAIN
-from .streamdeck import SDInfo, StreamDeck
+from .streamdeckapi.api import StreamDeckApi
+from .streamdeckapi.tools import get_model
+from .streamdeckapi.types import SDInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
 
         errors: dict[str, str] = {}
         if self.host is not None and self.mac is not None:
-            deck = StreamDeck(self.hass, host=self.host)
+            deck = StreamDeckApi(self.host)
             info = await deck.get_info()
 
             if info is False or not isinstance(info, SDInfo):
@@ -84,7 +86,8 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
                 data = {
                     "name": user_input["name"],
                     "host": self.host,
-                    "model": StreamDeck.get_model(info),
+                    "mac": self.mac,
+                    "model": get_model(info),
                     "version": info.application.version,
                     "enabled_platforms": user_input["enabled_platforms"],
                     "buttons": {},

@@ -9,206 +9,22 @@ import requests
 from websockets.client import connect
 from websockets.exceptions import WebSocketException
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_STATE_CHANGED, STATE_OFF, STATE_ON, Platform
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .binary_sensor import StreamDeckButton
 from .const import DEFAULT_PLATFORMS, DOMAIN, MANUFACTURER
+from .select import StreamDeckSelect
+from .streamdeckapi.types import SDInfo, SDWebsocketMessage
 
 PLUGIN_PORT = 6153
 PLUGIN_INFO = "/sd/info"
 PLUGIN_ICON = "/sd/icon"
 
 _LOGGER = logging.getLogger(__name__)
-
-#
-#   Types
-#
-
-
-class SDApplication:
-    """Stream Deck Application Type."""
-
-    font: str
-    language: str
-    platform: str
-    platform_version: str
-    version: str
-
-    def __init__(self, obj: dict) -> None:
-        """Init Stream Deck Application object."""
-        self.font = obj["font"]
-        self.language = obj["language"]
-        self.platform = obj["platform"]
-        self.platform_version = obj["platformVersion"]
-        self.version = obj["version"]
-
-
-class SDSize:
-    """Stream Deck Size Type."""
-
-    columns: int
-    rows: int
-
-    def __init__(self, obj: dict) -> None:
-        """Init Stream Deck Size object."""
-        self.columns = obj["columns"]
-        self.rows = obj["rows"]
-
-
-class SDDevice:
-    """Stream Deck Device Type."""
-
-    id: str
-    name: str
-    type: int
-    size: SDSize
-
-    def __init__(self, obj: dict) -> None:
-        """Init Stream Deck Device object."""
-        self.id = obj["id"]
-        self.name = obj["name"]
-        self.type = obj["type"]
-        self.size = SDSize(obj["size"])
-
-
-class SDButtonPosition:
-    """Stream Deck Button Position Type."""
-
-    x_pos: int
-    y_pos: int
-
-    def __init__(self, obj: dict) -> None:
-        """Init Stream Deck Button Position object."""
-        self.x_pos = obj["x"]
-        self.y_pos = obj["y"]
-
-
-class SDButton:
-    """Stream Deck Button Type."""
-
-    uuid: str
-    device: str
-    position: SDButtonPosition
-    svg: str
-
-    def __init__(self, obj: dict) -> None:
-        """Init Stream Deck Button object."""
-        self.uuid = obj["uuid"]
-        self.device = obj["device"]
-        self.svg = obj["svg"]
-        self.position = SDButtonPosition(obj["position"])
-
-
-class SDInfo(dict):
-    """Stream Deck Info Type."""
-
-    application: SDApplication
-    devices: list[SDDevice] = []
-    buttons: dict[str, SDButton] = {}
-
-    def __init__(self, obj: dict) -> None:
-        """Init Stream Deck Info object."""
-        dict.__init__(self, obj)
-        self.application = SDApplication(obj["application"])
-        for device in obj["devices"]:
-            self.devices.append(SDDevice(device))
-        for _id in obj["buttons"]:
-            self.buttons.update({_id: SDButton(obj["buttons"][_id])})
-
-
-class SDWebsocketMessage:
-    """Stream Deck Websocket Message Type."""
-
-    event: str
-    args: SDInfo | str | dict
-
-    def __init__(self, obj: dict) -> None:
-        """Init Stream Deck Websocket Message object."""
-        self.event = obj["event"]
-        if obj["args"] == {}:
-            self.args = {}
-            return
-        if isinstance(obj["args"], str):
-            self.args = obj["args"]
-            return
-        self.args = SDInfo(obj["args"])
-
-
-#
-#   Binary sensors
-#
-
-
-class StreamDeckButton(BinarySensorEntity):
-    """Stream Deck Button sensor."""
-
-    def __init__(
-        self,
-        entry_title: str,
-        device: DeviceInfo | None,
-        uuid: str,
-        position: str,
-        button_device: str,
-    ) -> None:
-        """Initialize the binary sensor."""
-        self._attr_name = f"{entry_title} {uuid}"
-        self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {uuid}")
-        self._attr_device_info = device
-        self._attr_is_on = False
-        self._attr_extra_state_attributes = {
-            "Position": position,
-            "Device ID": button_device,
-        }
-
-
-#
-#   Select sensors
-#
-
-
-class StreamDeckSelect(SelectEntity):
-    """Stream Deck Select sensor."""
-
-    def __init__(
-        self,
-        entry_title: str,
-        device: DeviceInfo | None,
-        uuid: str,
-        entry_id: str,
-        enabled_platforms: list[str],
-        position: str,
-        initial: str = "",
-    ) -> None:
-        """Init the select sensor."""
-        self._attr_name = f"{entry_title} {uuid} ({position})"
-        self._attr_unique_id = StreamDeck.get_unique_id(f"{entry_title} {uuid}")
-        self._attr_device_info = device
-        self._attr_current_option = initial
-        self._sd_entry_id = entry_id
-        self._btn_uuid = uuid
-        self._enabled_platforms = enabled_platforms
-
-    @property
-    def options(self) -> list[str]:
-        """Return a set of selectable options."""
-        # NOT UPDATING EVERY TIME A NEW ENTITY IS ADDED!!!
-        entities: list[str] = self.hass.states.async_entity_ids(
-            domain_filter=self._enabled_platforms
-        )
-        return entities
-
-    async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
-        _LOGGER.debug("Changed select to %s", option)
-        api: StreamDeck = self.hass.data[DOMAIN][self._sd_entry_id]
-        await api.set_button_entity(self._btn_uuid, option)
-        self._attr_current_option = option
-
 
 #
 #   Main class
@@ -267,7 +83,7 @@ class StreamDeck:
         return DeviceInfo(
             identifiers={
                 # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.entry.data.get("host", ""))
+                (DOMAIN, self.entry.data.get("mac", ""))
             },
             name=self.entry.data.get("name", None),
             manufacturer=MANUFACTURER,

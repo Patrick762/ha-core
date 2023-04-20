@@ -1,16 +1,56 @@
 """Binary Sensors for Stream Deck Integration."""
 
+from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .streamdeck import StreamDeck
+from .select import device_info, get_unique_id
+from .streamdeckapi.api import StreamDeckApi
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Stream Deck binary sensors."""
-    api: StreamDeck = hass.data[DOMAIN][entry.entry_id]
-    await api.add_entities(binary=async_add_entities)
+    api: StreamDeckApi = hass.data[DOMAIN][entry.entry_id]
+    info = await api.get_info()
+    if isinstance(info, bool):
+        return
+
+    sensors_to_add = []
+    for _, button_info in info.buttons.items():
+        sensors_to_add.append(
+            StreamDeckButton(
+                entry.title,
+                device_info(entry),
+                button_info.uuid,
+                f"{button_info.position.x_pos}|{button_info.position.y_pos}",
+                button_info.device,
+            )
+        )
+    async_add_entities(sensors_to_add)
+
+
+class StreamDeckButton(BinarySensorEntity):
+    """Stream Deck Button sensor."""
+
+    def __init__(
+        self,
+        entry_title: str,
+        device: DeviceInfo | None,
+        uuid: str,
+        position: str,
+        button_device: str,
+    ) -> None:
+        """Initialize the binary sensor."""
+        self._attr_name = f"{entry_title} {uuid}"
+        self._attr_unique_id = get_unique_id(f"{entry_title} {uuid}")
+        self._attr_device_info = device
+        self._attr_is_on = False
+        self._attr_extra_state_attributes = {
+            "Position": position,
+            "Device ID": button_device,
+        }
