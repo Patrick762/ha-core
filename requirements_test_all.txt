@@ -248,7 +248,7 @@ aiosenseme==0.6.1
 aiosenz==1.0.0
 
 # homeassistant.components.shelly
-aioshelly==5.3.1
+aioshelly==5.3.2
 
 # homeassistant.components.skybell
 aioskybell==22.7.0
@@ -1227,7 +1227,7 @@ pyialarm==2.2.0
 pyicloud==1.0.0
 
 # homeassistant.components.insteon
-pyinsteon==1.4.1
+pyinsteon==1.4.2
 
 # homeassistant.components.ipma
 pyipma==3.0.6
@@ -1516,6 +1516,9 @@ python-picnic-api==1.1.0
 # homeassistant.components.qbittorrent
 python-qbittorrent==0.4.2
 
+# homeassistant.components.roborock
+python-roborock==0.6.5
+
 # homeassistant.components.smarttub
 python-smarttub==0.0.33
 
@@ -1606,7 +1609,7 @@ rapt-ble==0.1.0
 regenmaschine==2022.11.0
 
 # homeassistant.components.renault
-renault-api==0.1.12
+renault-api==0.1.13
 
 # homeassistant.components.reolink
 reolink-aio==0.5.10
@@ -1915,6 +1918,9 @@ wled==0.16.0
 
 # homeassistant.components.wolflink
 wolf_smartset==0.1.11
+
+# homeassistant.components.wyoming
+wyoming==0.0.1
 
 # homeassistant.components.xbox
 xbox-webapi==2.0.11
