@@ -4,12 +4,13 @@ from streamdeckapi import StreamDeckApi
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_DEVICE_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import device_info, get_unique_id
-from .const import DOMAIN
+from .const import ATTR_POSITION, DOMAIN
 
 
 async def async_setup_entry(
@@ -52,6 +53,6 @@ class StreamDeckButton(BinarySensorEntity):
         self._attr_device_info = device
         self._attr_is_on = False
         self._attr_extra_state_attributes = {
-            "Position": position,
-            "Device ID": button_device,
+            ATTR_POSITION: position,
+            ATTR_DEVICE_ID: button_device,
         }

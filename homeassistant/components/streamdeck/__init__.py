@@ -10,18 +10,33 @@ from streamdeckapi import SDWebsocketMessage, StreamDeckApi
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    ATTR_ENTITY_ID,
+    ATTR_SW_VERSION,
     ATTR_UNIT_OF_MEASUREMENT,
+    CONF_ENTITY_ID,
+    CONF_EVENT_DATA,
+    CONF_HOST,
+    CONF_MAC,
+    CONF_MODEL,
+    CONF_NAME,
     EVENT_STATE_CHANGED,
     SERVICE_TOGGLE,
     STATE_OFF,
     STATE_ON,
     Platform,
 )
-from homeassistant.core import Context, Event, HomeAssistant
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN, MANUFACTURER, TOGGLEABLE_PLATFORMS
+from .const import (
+    CONF_BUTTONS,
+    DOMAIN,
+    MANUFACTURER,
+    MDI_DEFAULT,
+    MDI_PREFIX,
+    TOGGLEABLE_PLATFORMS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SELECT]
@@ -30,7 +45,7 @@ PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SELECT]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Stream Deck from a config entry."""
 
-    host = entry.data.get("host", "")
+    host = entry.data.get(CONF_HOST, "")
     api: StreamDeckApi | None = None
 
     def set_binary_sensor_state(uuid: str, state: str):
@@ -44,7 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.states.async_set(button_entity, state, button_entity_state.attributes)
 
     def on_button_press(uuid: str):
-        set_binary_sensor_state(uuid, "on")
+        set_binary_sensor_state(uuid, STATE_ON)
         if api is None:
             _LOGGER.warning("Method on_button_press: api is None")
             return
@@ -62,17 +77,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.services.async_call(
                     state.domain,
                     SERVICE_TOGGLE,
-                    target={"entity_id": entity},
-                    context=Context(user_id=entry.domain),
+                    target={CONF_ENTITY_ID: entity},
                 ),
                 hass.loop,
             )
 
     def on_button_release(uuid: str):
-        set_binary_sensor_state(uuid, "off")
+        set_binary_sensor_state(uuid, STATE_OFF)
 
     def on_ws_message(msg: SDWebsocketMessage):
-        hass.bus.async_fire(f"streamdeck_{msg.event}", {"host": host, "data": msg.args})
+        hass.bus.async_fire(
+            f"{DOMAIN}_{msg.event}", {CONF_HOST: host, CONF_EVENT_DATA: msg.args}
+        )
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = StreamDeckApi(
@@ -134,12 +150,12 @@ def device_info(entry) -> DeviceInfo:
     return DeviceInfo(
         identifiers={
             # Serial numbers are unique identifiers within a specific domain
-            (DOMAIN, entry.data.get("mac", ""))
+            (DOMAIN, entry.data.get(CONF_MAC, ""))
         },
-        name=entry.data.get("name", None),
+        name=entry.data.get(CONF_NAME, None),
         manufacturer=MANUFACTURER,
-        model=entry.data.get("model", None),
-        sw_version=entry.data.get("version", None),
+        model=entry.data.get(CONF_MODEL, None),
+        sw_version=entry.data.get(ATTR_SW_VERSION, None),
     )
 
 
@@ -148,7 +164,7 @@ def get_button_entity(hass: HomeAssistant, entry_id: str, uuid: str) -> str | No
     loaded_entry = hass.config_entries.async_get_entry(entry_id)
     if loaded_entry is None:
         return None
-    buttons = loaded_entry.data.get("buttons")
+    buttons = loaded_entry.data.get(CONF_BUTTONS)
     if not isinstance(buttons, dict):
         _LOGGER.error(
             "Method get_button_entity: Config entry %s has no data for 'buttons'",
@@ -163,7 +179,7 @@ def get_button_entity(hass: HomeAssistant, entry_id: str, uuid: str) -> str | No
             uuid,
         )
         return None
-    entity = button_config.get("entity")
+    entity = button_config.get(ATTR_ENTITY_ID)
     if not isinstance(entity, str):
         _LOGGER.info(
             "Method get_button_entity: Config entry %s has no data for buttons.%s.entity",
@@ -198,9 +214,9 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
     if mdi_string is None:
         _LOGGER.info("Method update_button_icon: Icon of entity %s is None", entity)
         # Set default icon for entity
-        mdi_string = "mdi:help"
+        mdi_string = MDI_DEFAULT
 
-    if mdi_string.startswith("mdi:"):
+    if mdi_string.startswith(MDI_PREFIX):
         mdi_string = mdi_string.split(":", 1)[1]
 
     mdi = MDI.get_icon(mdi_string, icon_color)
@@ -218,7 +234,7 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
 
 def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
     """Handle entity state changes."""
-    entity_id = event.data.get("entity_id")
+    entity_id = event.data.get(ATTR_ENTITY_ID)
     if entity_id is None:
         _LOGGER.error("Method on_entity_state_change: Event entity_id is None")
         return
@@ -231,7 +247,7 @@ def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
     loaded_entry = hass.config_entries.async_get_entry(entry_id)
     if loaded_entry is None:
         return None
-    buttons = loaded_entry.data.get("buttons")
+    buttons = loaded_entry.data.get(CONF_BUTTONS)
     if not isinstance(buttons, dict):
         _LOGGER.error(
             "Method on_entity_state_change: Config entry %s has no data for 'buttons'",
@@ -245,5 +261,5 @@ def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
     for uuid, button_config in buttons.items():
         if not isinstance(button_config, dict):
             continue
-        if button_config.get("entity") == entity_id:
+        if button_config.get(ATTR_ENTITY_ID) == entity_id:
             update_button_icon(hass, entry_id, uuid)

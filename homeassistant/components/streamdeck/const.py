@@ -22,3 +22,11 @@ AVAILABLE_PLATFORMS: list[str] = TOGGLEABLE_PLATFORMS + [
     Platform.BINARY_SENSOR,
 ]
 DEFAULT_PLATFORMS: list[str] = [Platform.SWITCH, input_boolean.DOMAIN]
+
+MDI_PREFIX = "mdi:"
+MDI_DEFAULT = "mdi:help"
+
+CONF_ENABLED_PLATFORMS = "enabled_platforms"
+CONF_BUTTONS = "buttons"
+
+ATTR_POSITION = "position"

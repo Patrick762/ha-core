@@ -7,12 +7,13 @@ from streamdeckapi import StreamDeckApi
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import device_info, get_unique_id, update_button_icon
-from .const import DEFAULT_PLATFORMS, DOMAIN
+from .const import CONF_BUTTONS, CONF_ENABLED_PLATFORMS, DEFAULT_PLATFORMS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,11 +30,11 @@ async def async_setup_entry(
     sensors_to_add = []
     for _, button_info in info.buttons.items():
         initial = ""
-        buttons = entry.data.get("buttons")
+        buttons = entry.data.get(CONF_BUTTONS)
         if isinstance(buttons, dict):
             button_config = buttons.get(button_info.uuid)
             if isinstance(button_config, dict):
-                entity = button_config.get("entity")
+                entity = button_config.get(ATTR_ENTITY_ID)
                 if isinstance(entity, str):
                     initial = entity
 
@@ -43,7 +44,7 @@ async def async_setup_entry(
                 device_info(entry),
                 button_info.uuid,
                 entry.entry_id,
-                entry.data.get("enabled_platforms", DEFAULT_PLATFORMS),
+                entry.data.get(CONF_ENABLED_PLATFORMS, DEFAULT_PLATFORMS),
                 f"{button_info.position.x_pos}|{button_info.position.y_pos}",
                 initial,
             )
@@ -98,7 +99,7 @@ class StreamDeckSelect(SelectEntity):
                 self._sd_entry_id,
             )
             return
-        if entry.data.get("buttons") is None:
+        if entry.data.get(CONF_BUTTONS) is None:
             _LOGGER.error(
                 "Method async_select_option: Config entry %s has no data for 'buttons'",
                 self._sd_entry_id,
@@ -109,9 +110,9 @@ class StreamDeckSelect(SelectEntity):
             data={
                 **entry.data,
                 **{
-                    "buttons": {
-                        **entry.data["buttons"],
-                        **{self._btn_uuid: {"entity": option}},
+                    CONF_BUTTONS: {
+                        **entry.data[CONF_BUTTONS],
+                        **{self._btn_uuid: {ATTR_ENTITY_ID: option}},
                     }
                 },
             },

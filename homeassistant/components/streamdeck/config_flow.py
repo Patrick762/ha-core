@@ -11,11 +11,24 @@ import voluptuous as vol
 
 from homeassistant.components import ssdp
 from homeassistant.config_entries import ConfigFlow
+from homeassistant.const import (
+    ATTR_SW_VERSION,
+    CONF_HOST,
+    CONF_MAC,
+    CONF_MODEL,
+    CONF_NAME,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import device_registry as dr, selector
 
-from .const import AVAILABLE_PLATFORMS, DEFAULT_PLATFORMS, DOMAIN
+from .const import (
+    AVAILABLE_PLATFORMS,
+    CONF_BUTTONS,
+    CONF_ENABLED_PLATFORMS,
+    DEFAULT_PLATFORMS,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,7 +57,7 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle user config flow."""
         if user_input:
-            self.host = user_input.get("host", "")
+            self.host = user_input.get(CONF_HOST, "")
             if not isinstance(self.host, str):
                 raise ValueError("Unknown type for host")
             self.mac = await _async_get_mac_address(self.hass, self.host)
@@ -59,10 +72,10 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
                 data_schema = vol.Schema(
                     {
-                        vol.Required("name", default="Stream Deck"): str,
-                        vol.Required("host", default=""): str,
+                        vol.Required(CONF_NAME, default="Stream Deck"): str,
+                        vol.Required(CONF_HOST, default=""): str,
                         vol.Required(
-                            "enabled_platforms",
+                            CONF_ENABLED_PLATFORMS,
                             default=DEFAULT_PLATFORMS,
                         ): selector.SelectSelector(
                             selector.SelectSelectorConfig(
@@ -85,22 +98,22 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if user_input is not None:
                 data = {
-                    "name": user_input["name"],
-                    "host": self.host,
-                    "mac": self.mac,
-                    "model": get_model(info),
-                    "version": info.application.version,
-                    "enabled_platforms": user_input["enabled_platforms"],
-                    "buttons": {},
+                    CONF_NAME: user_input[CONF_NAME],
+                    CONF_HOST: self.host,
+                    CONF_MAC: self.mac,
+                    CONF_MODEL: get_model(info),
+                    ATTR_SW_VERSION: info.application.version,
+                    CONF_ENABLED_PLATFORMS: user_input[CONF_ENABLED_PLATFORMS],
+                    CONF_BUTTONS: {},
                 }
-                return self.async_create_entry(title=user_input["name"], data=data)
+                return self.async_create_entry(title=user_input[CONF_NAME], data=data)
 
         data_schema = vol.Schema(
             {
-                vol.Required("name", default="Stream Deck"): str,
-                vol.Required("host", default=self.host): str,
+                vol.Required(CONF_NAME, default="Stream Deck"): str,
+                vol.Required(CONF_HOST, default=self.host): str,
                 vol.Required(
-                    "enabled_platforms",
+                    CONF_ENABLED_PLATFORMS,
                     default=DEFAULT_PLATFORMS,
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
