@@ -50,7 +50,7 @@ async def async_setup_entry(
 
         # Initialise button icon on load
         if initial != "":
-            update_button_icon(hass, entry.entry_id, api, button_info.uuid)
+            update_button_icon(hass, entry.entry_id, button_info.uuid)
 
     async_add_entities(sensors_to_add)
 
@@ -88,7 +88,6 @@ class StreamDeckSelect(SelectEntity):
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
         self._attr_current_option = option
-        api: StreamDeckApi = self.hass.data[DOMAIN][self._sd_entry_id]
         # Update config entry
         entry = self.hass.config_entries.async_get_entry(self._sd_entry_id)
         if entry is None:
@@ -120,4 +119,4 @@ class StreamDeckSelect(SelectEntity):
                 "Method async_select_option: Config entry %s has not been changed",
                 self._sd_entry_id,
             )
-        update_button_icon(self.hass, self._sd_entry_id, api, self._btn_uuid)
+        update_button_icon(self.hass, self._sd_entry_id, self._btn_uuid)

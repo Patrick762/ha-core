@@ -1,12 +1,21 @@
 """The Stream Deck integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 
+from mdiicons import MDI
+
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import (
+    ATTR_UNIT_OF_MEASUREMENT,
+    EVENT_STATE_CHANGED,
+    STATE_OFF,
+    STATE_ON,
+    Platform,
+)
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity import DeviceInfo
 
@@ -36,11 +45,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     def on_button_press(uuid: str):
         set_binary_sensor_state(uuid, "on")
-        # Update selected entity
         if api is None:
             _LOGGER.warning("Method on_button_press: api is None")
             return
-        update_button_icon(hass, entry.entry_id, api, uuid)
+        # Update entity if possible (automatically triggers icon update)
+        entity = get_button_entity(hass, entry.entry_id, uuid)
+        if entity is None:
+            return
+        state = hass.states.get(entity)
+        if state is None:
+            return
+        new_state = state.state
+        if state.state == STATE_ON:
+            new_state = STATE_OFF
+        elif state.state == STATE_OFF:
+            new_state = STATE_ON
+        hass.states.async_set(entity, new_state, state.attributes)
 
     def on_button_release(uuid: str):
         set_binary_sensor_state(uuid, "off")
@@ -69,6 +89,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     api.start_websocket_loop()
+
+    # Add listener for entity change events
+    hass.bus.async_listen(
+        EVENT_STATE_CHANGED,
+        lambda event: on_entity_state_change(hass, entry.entry_id, event),
+    )
 
     return True
 
@@ -111,34 +137,107 @@ def device_info(entry) -> DeviceInfo:
     )
 
 
-def update_button_icon(
-    hass: HomeAssistant, entry_id: str, api: StreamDeckApi, uuid: str
-):
-    """Update the icon shown on a button."""
+def get_button_entity(hass: HomeAssistant, entry_id: str, uuid: str) -> str | None:
+    """Get the selected entity for a button."""
     loaded_entry = hass.config_entries.async_get_entry(entry_id)
     if loaded_entry is None:
-        return
+        return None
     buttons = loaded_entry.data.get("buttons")
     if not isinstance(buttons, dict):
         _LOGGER.error(
-            "Method update_button_icon: Config entry %s has no data for 'buttons'",
+            "Method get_button_entity: Config entry %s has no data for 'buttons'",
             entry_id,
         )
-        return
+        return None
     button_config = buttons.get(uuid)
     if not isinstance(button_config, dict):
         _LOGGER.info(
-            "Method update_button_icon: Config entry %s has no data for buttons.%s",
+            "Method get_button_entity: Config entry %s has no data for buttons.%s",
             entry_id,
             uuid,
         )
-        return
+        return None
     entity = button_config.get("entity")
     if not isinstance(entity, str):
         _LOGGER.info(
-            "Method update_button_icon: Config entry %s has no data for buttons.%s.entity",
+            "Method get_button_entity: Config entry %s has no data for buttons.%s.entity",
             entry_id,
             uuid,
         )
+        return None
+    return entity
+
+
+def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
+    """Update the icon shown on a button."""
+    api: StreamDeckApi = hass.data[DOMAIN][entry_id]
+
+    entity = get_button_entity(hass, entry_id, uuid)
+    if entity is None:
         return
-    _LOGGER.info("Method update_button_icon: Updating icon for %s", uuid)
+
+    # Get state of entity
+    state = hass.states.get(entity)
+    if state is None:
+        _LOGGER.info("Method update_button_icon: State for entity %s is None", entity)
+        return
+
+    icon_color = "#000"
+    if state.state == STATE_ON:
+        icon_color = "#0e0"
+    elif state.state == STATE_OFF:
+        icon_color = "#e00"
+
+    mdi_string: str | None = state.attributes.get("icon")
+    if mdi_string is None:
+        _LOGGER.info("Method update_button_icon: Icon of entity %s is None", entity)
+        # Set default icon for entity
+        mdi_string = "mdi:help"
+
+    if mdi_string.startswith("mdi:"):
+        mdi_string = mdi_string.split(":", 1)[1]
+
+    mdi = MDI.get_icon(mdi_string, icon_color)
+
+    # Change this part if necessary
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+        <rect width="72" height="72" fill="#000" />
+        <text text-anchor="middle" x="35" y="15" fill="#fff" font-size="12">{state.state}{state.attributes.get(ATTR_UNIT_OF_MEASUREMENT, "")}</text>
+        <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
+        <g transform="translate(16, 12) scale(0.5)">{mdi}</g>
+        </svg>"""
+
+    asyncio.run_coroutine_threadsafe(api.update_icon(uuid, svg), hass.loop)
+
+
+def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
+    """Handle entity state changes."""
+    entity_id = event.data.get("entity_id")
+    if entity_id is None:
+        _LOGGER.error("Method on_entity_state_change: Event entity_id is None")
+        return
+
+    _LOGGER.debug(
+        "Method on_entity_state_change: Received event for entity %s", entity_id
+    )
+
+    # Get config_entry
+    loaded_entry = hass.config_entries.async_get_entry(entry_id)
+    if loaded_entry is None:
+        return None
+    buttons = loaded_entry.data.get("buttons")
+    if not isinstance(buttons, dict):
+        _LOGGER.error(
+            "Method on_entity_state_change: Config entry %s has no data for 'buttons'",
+            entry_id,
+        )
+        return None
+
+    state = hass.states.get(entity_id)
+    if state is None:
+        return
+    for uuid, button_config in buttons.items():
+        if not isinstance(button_config, dict):
+            continue
+        if button_config.get("entity") == entity_id:
+            update_button_icon(hass, entry_id, uuid)
