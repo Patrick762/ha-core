@@ -12,15 +12,16 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_UNIT_OF_MEASUREMENT,
     EVENT_STATE_CHANGED,
+    SERVICE_TOGGLE,
     STATE_OFF,
     STATE_ON,
     Platform,
 )
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Context, Event, HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN, MANUFACTURER
+from .const import DOMAIN, MANUFACTURER, TOGGLEABLE_PLATFORMS
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SELECT]
@@ -38,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         button_entity_state = hass.states.get(button_entity)
         if button_entity_state is None:
-            _LOGGER.info("Method on_button_press: button_entity_state is None")
+            _LOGGER.info("Method set_binary_sensor_state: button_entity_state is None")
             return
         hass.states.async_set(button_entity, state, button_entity_state.attributes)
 
@@ -50,16 +51,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Update entity if possible (automatically triggers icon update)
         entity = get_button_entity(hass, entry.entry_id, uuid)
         if entity is None:
+            _LOGGER.warning("Method on_button_press: entity is None")
             return
         state = hass.states.get(entity)
         if state is None:
+            _LOGGER.warning("Method on_button_press: state is None")
             return
-        new_state = state.state
-        if state.state == STATE_ON:
-            new_state = STATE_OFF
-        elif state.state == STATE_OFF:
-            new_state = STATE_ON
-        hass.states.async_set(entity, new_state, state.attributes)
+        if state.domain in TOGGLEABLE_PLATFORMS:
+            asyncio.run_coroutine_threadsafe(
+                hass.services.async_call(
+                    state.domain,
+                    SERVICE_TOGGLE,
+                    target={"entity_id": entity},
+                    context=Context(user_id=entry.domain),
+                ),
+                hass.loop,
+            )
 
     def on_button_release(uuid: str):
         set_binary_sensor_state(uuid, "off")

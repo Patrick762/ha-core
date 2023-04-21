@@ -81,6 +81,7 @@ class StreamDeckSelect(SelectEntity):
     @property
     def options(self) -> list[str]:
         """Return a set of selectable options."""
+        # NOT ADDING NEW ENTITIES!!!
         entities: list[str] = self.hass.states.async_entity_ids(
             domain_filter=self._enabled_platforms
         )
