@@ -33,6 +33,9 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
         if isinstance(hostname, str):
             self.host = hostname
             self.mac = await _async_get_mac_address(self.hass, self.host)
+        # Prevent double config
+        await self.async_set_unique_id(self.mac)
+        self._abort_if_unique_id_configured()
         _LOGGER.debug("Found Streamdeck at host %s with mac %s", self.host, self.mac)
         return self.async_show_form(step_id="user")
 
