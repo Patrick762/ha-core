@@ -6,8 +6,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from . import device_info, get_unique_id
 from .const import DOMAIN
-from .select import device_info, get_unique_id
 from .streamdeckapi.api import StreamDeckApi
 
 

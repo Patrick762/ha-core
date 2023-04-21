@@ -1,6 +1,7 @@
 """Select Sensors for Stream Deck Integration."""
 
-import re
+
+import logging
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
@@ -8,8 +9,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DEFAULT_PLATFORMS, DOMAIN, MANUFACTURER
+from . import device_info, get_unique_id, update_button_icon
+from .const import DEFAULT_PLATFORMS, DOMAIN
 from .streamdeckapi.api import StreamDeckApi
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -23,6 +27,15 @@ async def async_setup_entry(
 
     sensors_to_add = []
     for _, button_info in info.buttons.items():
+        initial = ""
+        buttons = entry.data.get("buttons")
+        if isinstance(buttons, dict):
+            button_config = buttons.get(button_info.uuid)
+            if isinstance(button_config, dict):
+                entity = button_config.get("entity")
+                if isinstance(entity, str):
+                    initial = entity
+
         sensors_to_add.append(
             StreamDeckSelect(
                 entry.title,
@@ -31,8 +44,14 @@ async def async_setup_entry(
                 entry.entry_id,
                 entry.data.get("enabled_platforms", DEFAULT_PLATFORMS),
                 f"{button_info.position.x_pos}|{button_info.position.y_pos}",
+                initial,
             )
         )
+
+        # Initialise button icon on load
+        if initial != "":
+            update_button_icon(hass, entry.entry_id, api, button_info.uuid)
+
     async_add_entities(sensors_to_add)
 
 
@@ -53,10 +72,10 @@ class StreamDeckSelect(SelectEntity):
         self._attr_name = f"{entry_title} {uuid} ({position})"
         self._attr_unique_id = get_unique_id(f"{entry_title} {uuid}")
         self._attr_device_info = device
-        self._attr_current_option = initial
         self._sd_entry_id = entry_id
         self._btn_uuid = uuid
         self._enabled_platforms = enabled_platforms
+        self._attr_current_option = initial
 
     @property
     def options(self) -> list[str]:
@@ -66,35 +85,39 @@ class StreamDeckSelect(SelectEntity):
         )
         return entities
 
-    # async def async_select_option(self, option: str) -> None:
-    #    """Change the selected option."""
-    #    api: StreamDeck = self.hass.data[DOMAIN][self._sd_entry_id]
-    #    await api.set_button_entity(self._btn_uuid, option)
-    #    self._attr_current_option = option
-
-
-#
-#   Tools
-#
-
-
-def get_unique_id(name: str, sensor_type: str | None = None):
-    """Generate an unique id."""
-    res = re.sub("[^A-Za-z0-9]+", "_", name).lower()
-    if sensor_type is not None:
-        return f"{sensor_type}.{res}"
-    return res
-
-
-def device_info(entry) -> DeviceInfo:
-    """Device info."""
-    return DeviceInfo(
-        identifiers={
-            # Serial numbers are unique identifiers within a specific domain
-            (DOMAIN, entry.data.get("mac", ""))
-        },
-        name=entry.data.get("name", None),
-        manufacturer=MANUFACTURER,
-        model=entry.data.get("model", None),
-        sw_version=entry.data.get("version", None),
-    )
+    async def async_select_option(self, option: str) -> None:
+        """Change the selected option."""
+        self._attr_current_option = option
+        api: StreamDeckApi = self.hass.data[DOMAIN][self._sd_entry_id]
+        # Update config entry
+        entry = self.hass.config_entries.async_get_entry(self._sd_entry_id)
+        if entry is None:
+            _LOGGER.error(
+                "Method async_select_option: Config entry %s not available",
+                self._sd_entry_id,
+            )
+            return
+        if entry.data.get("buttons") is None:
+            _LOGGER.error(
+                "Method async_select_option: Config entry %s has no data for 'buttons'",
+                self._sd_entry_id,
+            )
+            return
+        changed = self.hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                **{
+                    "buttons": {
+                        **entry.data["buttons"],
+                        **{self._btn_uuid: {"entity": option}},
+                    }
+                },
+            },
+        )
+        if changed is False:
+            _LOGGER.error(
+                "Method async_select_option: Config entry %s has not been changed",
+                self._sd_entry_id,
+            )
+        update_button_icon(self.hass, self._sd_entry_id, api, self._btn_uuid)
