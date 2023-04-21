@@ -6,6 +6,7 @@ import logging
 import re
 
 from mdiicons import MDI
+from streamdeckapi import SDWebsocketMessage, StreamDeckApi
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -20,8 +21,6 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN, MANUFACTURER
-from .streamdeckapi.api import StreamDeckApi
-from .streamdeckapi.types import SDWebsocketMessage
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SELECT]

@@ -1,5 +1,7 @@
 """Binary Sensors for Stream Deck Integration."""
 
+from streamdeckapi import StreamDeckApi
+
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -8,7 +10,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import device_info, get_unique_id
 from .const import DOMAIN
-from .streamdeckapi.api import StreamDeckApi
 
 
 async def async_setup_entry(

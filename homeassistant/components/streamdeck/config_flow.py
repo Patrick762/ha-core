@@ -6,6 +6,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from getmac import get_mac_address
+from streamdeckapi import SDInfo, StreamDeckApi, get_model
 import voluptuous as vol
 
 from homeassistant.components import ssdp
@@ -15,9 +16,6 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import device_registry as dr, selector
 
 from .const import AVAILABLE_PLATFORMS, DEFAULT_PLATFORMS, DOMAIN
-from .streamdeckapi.api import StreamDeckApi
-from .streamdeckapi.tools import get_model
-from .streamdeckapi.types import SDInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,7 +52,7 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
             deck = StreamDeckApi(self.host)
             info = await deck.get_info()
 
-            if info is False or not isinstance(info, SDInfo):
+            if not isinstance(info, SDInfo):
                 errors["base"] = "cannot_connect"
                 data_schema = vol.Schema(
                     {

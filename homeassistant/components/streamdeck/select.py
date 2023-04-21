@@ -3,6 +3,8 @@
 
 import logging
 
+from streamdeckapi import StreamDeckApi
+
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -11,7 +13,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import device_info, get_unique_id, update_button_icon
 from .const import DEFAULT_PLATFORMS, DOMAIN
-from .streamdeckapi.api import StreamDeckApi
 
 _LOGGER = logging.getLogger(__name__)
 
