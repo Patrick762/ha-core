@@ -7,13 +7,20 @@ from streamdeckapi import StreamDeckApi
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_DEVICE_ID, ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import device_info, get_unique_id, update_button_icon
-from .const import CONF_BUTTONS, CONF_ENABLED_PLATFORMS, DEFAULT_PLATFORMS, DOMAIN
+from .const import (
+    ATTR_POSITION,
+    ATTR_UUID,
+    CONF_BUTTONS,
+    CONF_ENABLED_PLATFORMS,
+    DEFAULT_PLATFORMS,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,11 +53,12 @@ async def async_setup_entry(
                 entry.entry_id,
                 entry.data.get(CONF_ENABLED_PLATFORMS, DEFAULT_PLATFORMS),
                 f"{button_info.position.x_pos}|{button_info.position.y_pos}",
+                button_info.device,
                 initial,
             )
         )
 
-        # Initialise button icon on load
+        # Initialize button icon on load
         if initial != "":
             update_button_icon(hass, entry.entry_id, button_info.uuid)
 
@@ -68,6 +76,7 @@ class StreamDeckSelect(SelectEntity):
         entry_id: str,
         enabled_platforms: list[str],
         position: str,
+        button_device: str,
         initial: str = "",
     ) -> None:
         """Init the select sensor."""
@@ -78,12 +87,17 @@ class StreamDeckSelect(SelectEntity):
         self._btn_uuid = uuid
         self._enabled_platforms = enabled_platforms
         self._attr_current_option = initial
+        self._attr_extra_state_attributes = {
+            ATTR_UUID: uuid,
+            ATTR_POSITION: position,
+            ATTR_DEVICE_ID: button_device,
+        }
 
     @property
     def options(self) -> list[str]:
         """Return a set of selectable options."""
-        # NOT ADDING NEW ENTITIES!!!
-        entities: list[str] = self.hass.states.async_entity_ids(
+        # NOT ADDING NEW ENTITIES (only after selecting a new one)!!!
+        entities: list[str] = [""] + self.hass.states.async_entity_ids(
             domain_filter=self._enabled_platforms
         )
         return entities

@@ -96,6 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         on_button_press=on_button_press,
         on_button_release=on_button_release,
         on_ws_message=on_ws_message,
+        on_ws_connect=lambda: init_all_buttons(hass, entry.entry_id),
     )
 
     api = hass.data[DOMAIN][entry.entry_id]
@@ -195,7 +196,19 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
     api: StreamDeckApi = hass.data[DOMAIN][entry_id]
 
     entity = get_button_entity(hass, entry_id, uuid)
-    if entity is None:
+    # Display default icon if nothing is selected
+    if entity is None or entity == "":
+        _LOGGER.info(
+            "Method update_button_icon: No entity selected for %s. Using default icon",
+            uuid,
+        )
+        svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+            <rect width="72" height="72" fill="#a00" />
+            <text text-anchor="middle" x="35" y="20" fill="#fff" font-size="13">{uuid.split("-")[0]}</text>
+            <text text-anchor="middle" x="35" y="40" fill="#fff" font-size="13">{uuid.split("-")[1]}</text>
+            <text text-anchor="middle" x="35" y="60" fill="#fff" font-size="13">{uuid.split("-")[2]}</text>
+            </svg>"""
+        asyncio.run_coroutine_threadsafe(api.update_icon(uuid, svg), hass.loop)
         return
 
     # Get state of entity
@@ -263,3 +276,21 @@ def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
             continue
         if button_config.get(ATTR_ENTITY_ID) == entity_id:
             update_button_icon(hass, entry_id, uuid)
+
+
+def init_all_buttons(hass: HomeAssistant, entry_id: str):
+    """Initialize all buttons."""
+    # Get config_entry
+    loaded_entry = hass.config_entries.async_get_entry(entry_id)
+    if loaded_entry is None:
+        return None
+    buttons = loaded_entry.data.get(CONF_BUTTONS)
+    if not isinstance(buttons, dict):
+        _LOGGER.error(
+            "Method on_entity_state_change: Config entry %s has no data for 'buttons'",
+            entry_id,
+        )
+        return
+
+    for uuid, _ in buttons.items():
+        update_button_icon(hass, entry_id, uuid)

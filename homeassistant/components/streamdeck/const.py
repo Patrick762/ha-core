@@ -30,3 +30,4 @@ CONF_ENABLED_PLATFORMS = "enabled_platforms"
 CONF_BUTTONS = "buttons"
 
 ATTR_POSITION = "position"
+ATTR_UUID = "uuid"

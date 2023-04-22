@@ -10,7 +10,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import device_info, get_unique_id
-from .const import ATTR_POSITION, DOMAIN
+from .const import ATTR_POSITION, ATTR_UUID, DOMAIN
 
 
 async def async_setup_entry(
@@ -53,6 +53,7 @@ class StreamDeckButton(BinarySensorEntity):
         self._attr_device_info = device
         self._attr_is_on = False
         self._attr_extra_state_attributes = {
+            ATTR_UUID: uuid,
             ATTR_POSITION: position,
             ATTR_DEVICE_ID: button_device,
         }
