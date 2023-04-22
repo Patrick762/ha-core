@@ -8,8 +8,10 @@ import re
 from mdiicons import MDI
 from streamdeckapi import SDWebsocketMessage, StreamDeckApi
 
+from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    ATTR_DEVICE_ID,
     ATTR_ENTITY_ID,
     ATTR_SW_VERSION,
     ATTR_UNIT_OF_MEASUREMENT,
@@ -30,7 +32,11 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity import DeviceInfo
 
 from .const import (
+    ATTR_POSITION,
+    ATTR_UUID,
     CONF_BUTTONS,
+    CONF_ENABLED_PLATFORMS,
+    DEFAULT_PLATFORMS,
     DOMAIN,
     MANUFACTURER,
     MDI_DEFAULT,
@@ -131,6 +137,91 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     ) and await hass.config_entries.async_forward_entry_unload(entry, Platform.SELECT):
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
+
+
+#
+#   Entities
+#
+
+
+class StreamDeckSelect(SelectEntity):
+    """Stream Deck Select sensor."""
+
+    def __init__(
+        self,
+        entry_title: str,
+        device: DeviceInfo | None,
+        uuid: str,
+        entry_id: str,
+        enabled_platforms: list[str],
+        position: str,
+        button_device: str,
+        initial: str = "",
+    ) -> None:
+        """Init the select sensor."""
+        self._attr_name = f"{entry_title} {uuid} ({position})"
+        self._attr_unique_id = get_unique_id(f"{entry_title} {uuid}")
+        self._attr_device_info = device
+        self._sd_entry_id = entry_id
+        self._btn_uuid = uuid
+        self._enabled_platforms = enabled_platforms
+        self._attr_options = [""]
+        self._attr_current_option = initial
+        self._attr_extra_state_attributes = {
+            ATTR_UUID: uuid,
+            ATTR_POSITION: position,
+            ATTR_DEVICE_ID: button_device,
+        }
+
+    async def async_select_option(self, option: str) -> None:
+        """Change the selected option."""
+        self._attr_current_option = option
+        # Update config entry
+        entry = self.hass.config_entries.async_get_entry(self._sd_entry_id)
+        if entry is None:
+            _LOGGER.error(
+                "Method async_select_option: Config entry %s not available",
+                self._sd_entry_id,
+            )
+            return
+        if entry.data.get(CONF_BUTTONS) is None:
+            _LOGGER.error(
+                "Method async_select_option: Config entry %s has no data for 'buttons'",
+                self._sd_entry_id,
+            )
+            return
+        changed = self.hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                **{
+                    CONF_BUTTONS: {
+                        **entry.data[CONF_BUTTONS],
+                        **{self._btn_uuid: {ATTR_ENTITY_ID: option}},
+                    }
+                },
+            },
+        )
+        if changed is False:
+            _LOGGER.error(
+                "Method async_select_option: Config entry %s has not been changed",
+                self._sd_entry_id,
+            )
+        update_button_icon(self.hass, self._sd_entry_id, self._btn_uuid)
+
+    async def async_set_options(self, options: list[str]) -> None:
+        """Set options."""
+        self._attr_options = options
+
+        if self.current_option not in self.options:
+            _LOGGER.warning(
+                "Current option: %s no longer valid (possible options: %s)",
+                self.current_option,
+                ", ".join(self.options),
+            )
+            # self._attr_current_option = options[0]
+
+        self.async_write_ha_state()
 
 
 #
@@ -260,6 +351,22 @@ def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
     loaded_entry = hass.config_entries.async_get_entry(entry_id)
     if loaded_entry is None:
         return None
+
+    # Update select options
+    selects: list[StreamDeckSelect] = hass.data[DOMAIN][f"{entry_id}-select"]
+    for select in selects:
+        asyncio.run_coroutine_threadsafe(
+            select.async_set_options(
+                [""]
+                + hass.states.async_entity_ids(
+                    domain_filter=loaded_entry.data.get(
+                        CONF_ENABLED_PLATFORMS, DEFAULT_PLATFORMS
+                    )
+                )
+            ),
+            hass.loop,
+        )
+
     buttons = loaded_entry.data.get(CONF_BUTTONS)
     if not isinstance(buttons, dict):
         _LOGGER.error(
