@@ -45,7 +45,7 @@ pyudev==0.23.2
 pyyaml==6.0
 requests==2.29.0
 scapy==2.5.0
-sqlalchemy==2.0.11
+sqlalchemy==2.0.12
 typing-extensions>=4.5.0,<5.0
 ulid-transform==0.7.0
 voluptuous-serialize==2.6.0
@@ -176,3 +176,6 @@ websockets>=11.0.1
 # https://github.com/pysnmp/pysnmp/issues/51
 pyasn1==0.4.8
 pysnmplib==5.0.21
+# pysnmp is no longer maintained and does not work with newer
+# python
+pysnmp==1000000000.0.0
