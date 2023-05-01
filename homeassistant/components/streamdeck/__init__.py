@@ -66,10 +66,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 hass.bus.async_fire(
                     f"{DOMAIN}_status", {
                         CONF_HOST: api.host,
-                        CONF_EVENT_DATA: {
-                            CONF_EVENT: "status",
-                            "args": info
-                        }
+                        CONF_EVENT_DATA: info
                     }
                 )
 
