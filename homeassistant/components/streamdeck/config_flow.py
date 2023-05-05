@@ -1,6 +1,4 @@
 """Config flow for Stream Deck."""
-from functools import partial
-import ipaddress
 import logging
 from typing import Any
 from urllib.parse import urlparse
@@ -13,9 +11,9 @@ from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import (
     ATTR_SW_VERSION,
     CONF_HOST,
-    CONF_UNIQUE_ID,
     CONF_MODEL,
     CONF_NAME,
+    CONF_UNIQUE_ID,
 )
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
@@ -37,30 +35,36 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
     host: str | None = None
     unique_id: str | None = None
 
-    async def _get_unique_id(self):
+    async def _get_unique_id(self) -> SDInfo | None:
         deck = StreamDeckApi(self.host)
         info = await deck.get_info()
         if not isinstance(info, SDInfo) or len(info.devices) == 0:
             self.unique_id = None
-            return
+            return None
         self.unique_id = ""
         for device in info.devices:
             self.unique_id = f"{self.unique_id}|{device.id}"
         # Prevent duplicates
         await self.async_set_unique_id(self.unique_id)
-        self._abort_if_unique_id_configured(updates={
-            CONF_HOST: self.host,
-            CONF_UNIQUE_ID: self.unique_id
-        })
+        self._abort_if_unique_id_configured(
+            updates={CONF_HOST: self.host, CONF_UNIQUE_ID: self.unique_id}
+        )
+        return info
 
     async def async_step_ssdp(self, discovery_info: ssdp.SsdpServiceInfo) -> FlowResult:
         """Handle ssdp discovery flow."""
         location = discovery_info.ssdp_location
         hostname = urlparse(location).hostname
-        if isinstance(hostname, str):
-            self.host = hostname
-            await self._get_unique_id()
-        _LOGGER.debug("Found Streamdeck at host %s with unique_id %s", self.host, self.unique_id)
+        _LOGGER.debug("SSDP found. Location: %s", location)
+        if not isinstance(hostname, str):
+            return self.async_abort(reason="no_hostname")
+        self.host = hostname
+        info = await self._get_unique_id()
+        if not isinstance(info, SDInfo):
+            return self.async_abort(reason="no_streamdeck")
+        _LOGGER.debug(
+            "Found Streamdeck at host %s with unique_id %s", self.host, self.unique_id
+        )
         return self.async_show_form(step_id="user")
 
     async def async_step_user(

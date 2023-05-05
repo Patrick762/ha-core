@@ -7,6 +7,7 @@ import re
 
 from mdiicons import MDI
 from streamdeckapi import SDWebsocketMessage, StreamDeckApi
+import voluptuous as vol
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
@@ -16,7 +17,6 @@ from homeassistant.const import (
     ATTR_SW_VERSION,
     ATTR_UNIT_OF_MEASUREMENT,
     CONF_ENTITY_ID,
-    CONF_EVENT,
     CONF_EVENT_DATA,
     CONF_HOST,
     CONF_MAC,
@@ -32,7 +32,6 @@ from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.typing import ConfigType
-import voluptuous as vol
 
 from .const import (
     ATTR_POSITION,
@@ -50,11 +49,12 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SELECT]
 
+
 def setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Stream Deck Integration."""
 
     async def sevice_sdinfo(call: ServiceCall) -> None:
-        """Handle Service sdinfo"""
+        """Handle Service sdinfo."""
         entries: list[ConfigEntry] = hass.config_entries.async_entries(DOMAIN)
         for entry in entries:
             _LOGGER.info(entry.entry_id)
@@ -64,10 +64,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
             info = await api.get_info()
             if info is not None:
                 hass.bus.async_fire(
-                    f"{DOMAIN}_status", {
-                        CONF_HOST: api.host,
-                        CONF_EVENT_DATA: info
-                    }
+                    f"{DOMAIN}_status", {CONF_HOST: api.host, CONF_EVENT_DATA: info}
                 )
 
     hass.services.register(DOMAIN, "sdinfo", sevice_sdinfo, schema=vol.Schema({}))
