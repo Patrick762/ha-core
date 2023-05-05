@@ -5,7 +5,6 @@ import logging
 from typing import Any
 from urllib.parse import urlparse
 
-from getmac import get_mac_address
 from streamdeckapi import SDInfo, StreamDeckApi, get_model
 import voluptuous as vol
 
@@ -14,13 +13,12 @@ from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import (
     ATTR_SW_VERSION,
     CONF_HOST,
-    CONF_MAC,
+    CONF_UNIQUE_ID,
     CONF_MODEL,
     CONF_NAME,
 )
-from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import device_registry as dr, selector
+from homeassistant.helpers import selector
 
 from .const import (
     AVAILABLE_PLATFORMS,
@@ -37,7 +35,23 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
     """Config Flow for Stream Deck Integration."""
 
     host: str | None = None
-    mac: str | None = None
+    unique_id: str | None = None
+
+    async def _get_unique_id(self):
+        deck = StreamDeckApi(self.host)
+        info = await deck.get_info()
+        if not isinstance(info, SDInfo) or len(info.devices) == 0:
+            self.unique_id = None
+            return
+        self.unique_id = ""
+        for device in info.devices:
+            self.unique_id = f"{self.unique_id}|{device.id}"
+        # Prevent duplicates
+        await self.async_set_unique_id(self.unique_id)
+        self._abort_if_unique_id_configured(updates={
+            CONF_HOST: self.host,
+            CONF_UNIQUE_ID: self.unique_id
+        })
 
     async def async_step_ssdp(self, discovery_info: ssdp.SsdpServiceInfo) -> FlowResult:
         """Handle ssdp discovery flow."""
@@ -45,10 +59,8 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
         hostname = urlparse(location).hostname
         if isinstance(hostname, str):
             self.host = hostname
-            self.mac = await _async_get_mac_address(self.hass, self.host)
-        await self.async_set_unique_id(self.mac)
-        self._abort_if_unique_id_configured()
-        _LOGGER.debug("Found Streamdeck at host %s with mac %s", self.host, self.mac)
+            await self._get_unique_id()
+        _LOGGER.debug("Found Streamdeck at host %s with unique_id %s", self.host, self.unique_id)
         return self.async_show_form(step_id="user")
 
     async def async_step_user(
@@ -59,11 +71,11 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
             self.host = user_input.get(CONF_HOST, "")
             if not isinstance(self.host, str):
                 raise ValueError("Unknown type for host")
-            self.mac = await _async_get_mac_address(self.hass, self.host)
-            _LOGGER.info("Host %s has MAC %s", self.host, self.mac)
+            await self._get_unique_id()
+            _LOGGER.info("Host %s has unique_id %s", self.host, self.unique_id)
 
         errors: dict[str, str] = {}
-        if self.host is not None and self.mac is not None:
+        if self.host is not None and self.unique_id is not None:
             deck = StreamDeckApi(self.host)
             info = await deck.get_info()
 
@@ -91,15 +103,13 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
                     errors=errors,
                 )
 
-            # Prevent double config
-            await self.async_set_unique_id(self.mac)
-            self._abort_if_unique_id_configured()
+            await self._get_unique_id()
 
             if user_input is not None:
                 data = {
                     CONF_NAME: user_input[CONF_NAME],
                     CONF_HOST: self.host,
-                    CONF_MAC: self.mac,
+                    CONF_UNIQUE_ID: self.unique_id,
                     CONF_MODEL: get_model(info),
                     ATTR_SW_VERSION: info.application.version,
                     CONF_ENABLED_PLATFORMS: user_input[CONF_ENABLED_PLATFORMS],
@@ -129,37 +139,3 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             last_step=True,
         )
-
-
-# Copied from homeassistant/components/dlna_dmr/config_flow.py
-async def _async_get_mac_address(hass: HomeAssistant, host: str) -> str | None:
-    """Get mac address from host name, IPv4 address, or IPv6 address."""
-    # Help mypy, which has trouble with the async_add_executor_job + partial call
-    mac_address: str | None
-    # getmac has trouble using IPv6 addresses as the "hostname" parameter so
-    # assume host is an IP address, then handle the case it's not.
-    try:
-        ip_addr = ipaddress.ip_address(host)
-    except ValueError:
-        mac_address = await hass.async_add_executor_job(
-            partial(get_mac_address, hostname=host)
-        )
-    else:
-        if ip_addr.version == 4:
-            mac_address = await hass.async_add_executor_job(
-                partial(get_mac_address, ip=host)
-            )
-        else:
-            # Drop scope_id from IPv6 address by converting via int
-            ip_addr = ipaddress.IPv6Address(int(ip_addr))
-            mac_address = await hass.async_add_executor_job(
-                partial(get_mac_address, ip6=str(ip_addr))
-            )
-
-    if not mac_address:
-        # !!! TESTING ONLY !!!
-        if host == "10.1.4.5":
-            return "80:61:5f:08:2B:e2"
-        return None
-
-    return dr.format_mac(mac_address)
