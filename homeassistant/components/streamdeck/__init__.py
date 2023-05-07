@@ -16,6 +16,7 @@ from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_SW_VERSION,
     ATTR_UNIT_OF_MEASUREMENT,
+    CONF_BRIGHTNESS,
     CONF_ENTITY_ID,
     CONF_EVENT_DATA,
     CONF_HOST,
@@ -24,11 +25,12 @@ from homeassistant.const import (
     CONF_NAME,
     EVENT_STATE_CHANGED,
     SERVICE_TOGGLE,
+    SERVICE_TURN_ON,
     STATE_OFF,
     STATE_ON,
     Platform,
 )
-from homeassistant.core import Event, HomeAssistant, ServiceCall
+from homeassistant.core import Event, HomeAssistant, ServiceCall, State
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.typing import ConfigType
@@ -40,14 +42,22 @@ from .const import (
     CONF_ENABLED_PLATFORMS,
     DEFAULT_PLATFORMS,
     DOMAIN,
+    EVENT_LONG_PRESS,
+    EVENT_SHORT_PRESS,
     MANUFACTURER,
     MDI_DEFAULT,
     MDI_PREFIX,
+    SELECT_DEFAULT_OPTIONS,
+    SELECT_OPTION_DELETE,
+    SELECT_OPTION_DOWN,
+    SELECT_OPTION_UP,
     TOGGLEABLE_PLATFORMS,
+    UP_DOWN_PLATFORMS,
+    UP_DOWN_STEPS,
 )
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SELECT]
+PLATFORMS: list[Platform] = [Platform.SELECT]
 
 
 def setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -78,18 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host = entry.data.get(CONF_HOST, "")
     api: StreamDeckApi | None = None
 
-    def set_binary_sensor_state(uuid: str, state: str):
-        button_entity = get_unique_id(
-            f"{entry.title} {uuid}", sensor_type=Platform.BINARY_SENSOR
-        )
-        button_entity_state = hass.states.get(button_entity)
-        if button_entity_state is None:
-            _LOGGER.info("Method set_binary_sensor_state: button_entity_state is None")
-            return
-        hass.states.async_set(button_entity, state, button_entity_state.attributes)
-
     def on_button_press(uuid: str):
-        set_binary_sensor_state(uuid, STATE_ON)
         if api is None:
             _LOGGER.warning("Method on_button_press: api is None")
             return
@@ -98,36 +97,56 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if entity is None:
             _LOGGER.warning("Method on_button_press: entity is None")
             return
-        state = hass.states.get(entity)
+
+        # Handle UP and DOWN buttons
+        base_entity = entity
+        if entity in (SELECT_OPTION_UP, SELECT_OPTION_DOWN):
+            base_entity = hass.data[DOMAIN][f"{entry.entry_id}_current"]
+            if base_entity is None:
+                return
+
+        state = hass.states.get(base_entity)
         if state is None:
             _LOGGER.warning("Method on_button_press: state is None")
             return
         if state.domain in TOGGLEABLE_PLATFORMS:
-            asyncio.run_coroutine_threadsafe(
-                hass.services.async_call(
-                    state.domain,
-                    SERVICE_TOGGLE,
-                    target={CONF_ENTITY_ID: entity},
-                ),
-                hass.loop,
-            )
-
-    def on_button_release(uuid: str):
-        set_binary_sensor_state(uuid, STATE_OFF)
+            if entity == SELECT_OPTION_UP:
+                option_up(hass, state)
+            elif entity == SELECT_OPTION_DOWN:
+                option_down(hass, state)
+            else:
+                asyncio.run_coroutine_threadsafe(
+                    hass.services.async_call(
+                        state.domain,
+                        SERVICE_TOGGLE,
+                        target={CONF_ENTITY_ID: base_entity},
+                    ),
+                    hass.loop,
+                )
+        # Save last pressed entity to use for UP and DOWN buttons
+        hass.data[DOMAIN][f"{entry.entry_id}_current"] = base_entity
+        # TODO: Update icons for UP and DOWN buttons
 
     def on_ws_message(msg: SDWebsocketMessage):
         hass.bus.async_fire(
             f"{DOMAIN}_{msg.event}", {CONF_HOST: host, CONF_EVENT_DATA: msg.args}
         )
+        if msg.event == EVENT_SHORT_PRESS and isinstance(msg.args, str):
+            on_button_press(msg.args)
+        elif msg.event == EVENT_LONG_PRESS and isinstance(msg.args, str):
+            entity = get_button_entity(hass, entry.entry_id, msg.args)
+            if entity is None:
+                return
+            hass.data[DOMAIN][f"{entry.entry_id}_current"] = entity
+            _LOGGER.info("Set current button to %s", entity)
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = StreamDeckApi(
         host,
-        on_button_press=on_button_press,
-        on_button_release=on_button_release,
         on_ws_message=on_ws_message,
         on_ws_connect=lambda: init_all_buttons(hass, entry.entry_id),
     )
+    hass.data[DOMAIN][f"{entry.entry_id}_current"] = None
 
     api = hass.data[DOMAIN][entry.entry_id]
 
@@ -189,7 +208,7 @@ class StreamDeckSelect(SelectEntity):
         self._sd_entry_id = entry_id
         self._btn_uuid = uuid
         self._enabled_platforms = enabled_platforms
-        self._attr_options = [""]
+        self._attr_options = SELECT_DEFAULT_OPTIONS
         self._attr_current_option = initial
         self._attr_extra_state_attributes = {
             ATTR_UUID: uuid,
@@ -312,7 +331,7 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
 
     entity = get_button_entity(hass, entry_id, uuid)
     # Display default icon if nothing is selected
-    if entity is None or entity == "":
+    if entity is None or entity == "" or entity == SELECT_OPTION_DELETE:
         _LOGGER.info(
             "Method update_button_icon: No entity selected for %s. Using default icon",
             uuid,
@@ -322,6 +341,23 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
             <text text-anchor="middle" x="35" y="20" fill="#fff" font-size="13">{uuid.split("-")[0]}</text>
             <text text-anchor="middle" x="35" y="40" fill="#fff" font-size="13">{uuid.split("-")[1]}</text>
             <text text-anchor="middle" x="35" y="60" fill="#fff" font-size="13">{uuid.split("-")[2]}</text>
+            </svg>"""
+        asyncio.run_coroutine_threadsafe(api.update_icon(uuid, svg), hass.loop)
+        return
+
+    # Handle UP and DOWN options
+    if entity == SELECT_OPTION_UP:
+        svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+            <rect width="72" height="72" fill="#000" />
+            <g transform="translate(16, 12) scale(0.5)">{MDI.get_icon("plus-box", "#fff")}</g>
+            </svg>"""
+        asyncio.run_coroutine_threadsafe(api.update_icon(uuid, svg), hass.loop)
+        return
+
+    if entity == SELECT_OPTION_DOWN:
+        svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+            <rect width="72" height="72" fill="#000" />
+            <g transform="translate(16, 12) scale(0.5)">{MDI.get_icon("minus-box", "#fff")}</g>
             </svg>"""
         asyncio.run_coroutine_threadsafe(api.update_icon(uuid, svg), hass.loop)
         return
@@ -381,7 +417,7 @@ def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
     for select in selects:
         asyncio.run_coroutine_threadsafe(
             select.async_set_options(
-                [""]
+                SELECT_DEFAULT_OPTIONS
                 + hass.states.async_entity_ids(
                     domain_filter=loaded_entry.data.get(
                         CONF_ENABLED_PLATFORMS, DEFAULT_PLATFORMS
@@ -425,3 +461,45 @@ def init_all_buttons(hass: HomeAssistant, entry_id: str):
 
     for uuid, _ in buttons.items():
         update_button_icon(hass, entry_id, uuid)
+
+
+def option_up(hass: HomeAssistant, state: State):
+    """Handle service for UP buttons."""
+    if state.domain not in UP_DOWN_PLATFORMS:
+        _LOGGER.debug("%s has no service for UP", state.entity_id)
+        return
+    if state.domain == Platform.LIGHT:
+        brightness = state.attributes.get(CONF_BRIGHTNESS)
+        if not isinstance(brightness, int):
+            _LOGGER.debug("%s has no %s", state.entity_id, CONF_BRIGHTNESS)
+            return
+        asyncio.run_coroutine_threadsafe(
+            hass.services.async_call(
+                state.domain,
+                SERVICE_TURN_ON,
+                target={CONF_ENTITY_ID: state.entity_id},
+                service_data={CONF_BRIGHTNESS: brightness + UP_DOWN_STEPS},
+            ),
+            hass.loop,
+        )
+
+
+def option_down(hass: HomeAssistant, state: State):
+    """Handle service for DOWN buttons."""
+    if state.domain not in UP_DOWN_PLATFORMS:
+        _LOGGER.debug("%s has no service for DOWN", state.entity_id)
+        return
+    if state.domain == Platform.LIGHT:
+        brightness = state.attributes.get(CONF_BRIGHTNESS)
+        if not isinstance(brightness, int):
+            _LOGGER.debug("%s has no %s", state.entity_id, CONF_BRIGHTNESS)
+            return
+        asyncio.run_coroutine_threadsafe(
+            hass.services.async_call(
+                state.domain,
+                SERVICE_TURN_ON,
+                target={CONF_ENTITY_ID: state.entity_id},
+                service_data={CONF_BRIGHTNESS: brightness - UP_DOWN_STEPS},
+            ),
+            hass.loop,
+        )

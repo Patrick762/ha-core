@@ -46,9 +46,7 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
             self.unique_id = f"{self.unique_id}|{device.id}"
         # Prevent duplicates
         await self.async_set_unique_id(self.unique_id)
-        self._abort_if_unique_id_configured(
-            updates={CONF_HOST: self.host, CONF_UNIQUE_ID: self.unique_id}
-        )
+        self._abort_if_unique_id_configured()
         return info
 
     async def async_step_ssdp(self, discovery_info: ssdp.SsdpServiceInfo) -> FlowResult:
