@@ -12,8 +12,9 @@ DATA_CURRENT_ENTITY = "current"
 DATA_SELECT_ENTITIES = "select"
 
 # Config entry const
-CONF_ENABLED_PLATFORMS = "enabled_platforms"
 CONF_BUTTONS = "buttons"
+CONF_ENABLED_PLATFORMS = "enabled_platforms"
+CONF_VERSION = "version"
 
 TOGGLEABLE_PLATFORMS = [
     Platform.COVER,

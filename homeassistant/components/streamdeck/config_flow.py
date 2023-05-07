@@ -9,7 +9,6 @@ import voluptuous as vol
 from homeassistant.components import ssdp
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import (
-    ATTR_SW_VERSION,
     CONF_HOST,
     CONF_MODEL,
     CONF_NAME,
@@ -22,6 +21,7 @@ from .const import (
     AVAILABLE_PLATFORMS,
     CONF_BUTTONS,
     CONF_ENABLED_PLATFORMS,
+    CONF_VERSION,
     DEFAULT_PLATFORMS,
     DOMAIN,
 )
@@ -108,12 +108,13 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
             await self._get_unique_id()
 
             if user_input is not None:
+                # Create config_entry
                 data = {
                     CONF_NAME: user_input[CONF_NAME],
                     CONF_HOST: self.host,
                     CONF_UNIQUE_ID: self.unique_id,
                     CONF_MODEL: get_model(info),
-                    ATTR_SW_VERSION: info.application.version,
+                    CONF_VERSION: info.application.version,
                     CONF_ENABLED_PLATFORMS: user_input[CONF_ENABLED_PLATFORMS],
                     CONF_BUTTONS: {},
                 }

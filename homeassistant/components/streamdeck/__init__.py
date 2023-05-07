@@ -14,7 +14,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_DEVICE_ID,
     ATTR_ENTITY_ID,
-    ATTR_SW_VERSION,
     ATTR_UNIT_OF_MEASUREMENT,
     CONF_BRIGHTNESS,
     CONF_ENTITY_ID,
@@ -40,6 +39,7 @@ from .const import (
     ATTR_UUID,
     CONF_BUTTONS,
     CONF_ENABLED_PLATFORMS,
+    CONF_VERSION,
     DATA_API,
     DATA_CURRENT_ENTITY,
     DATA_SELECT_ENTITIES,
@@ -299,7 +299,7 @@ def device_info(entry) -> DeviceInfo:
         name=entry.data.get(CONF_NAME, None),
         manufacturer=MANUFACTURER,
         model=entry.data.get(CONF_MODEL, None),
-        sw_version=entry.data.get(ATTR_SW_VERSION, None),
+        sw_version=entry.data.get(CONF_VERSION, None),
     )
 
 
