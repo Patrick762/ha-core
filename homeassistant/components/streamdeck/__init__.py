@@ -375,7 +375,6 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
         return
 
     if entity not in (SELECT_OPTION_UP, SELECT_OPTION_DOWN):
-        # TODO: Check if base_entity has options for UP and DOWN
         base_entity = entity
 
     # Get state of entity
@@ -387,6 +386,7 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
         return
 
     icon_color = "#000"
+    option_color = "#fff"
     if state.state == STATE_ON:
         icon_color = "#0e0"
     elif state.state == STATE_OFF:
@@ -394,6 +394,11 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
 
     if entity in (SELECT_OPTION_UP, SELECT_OPTION_DOWN):
         icon_color = "#fff"
+
+        # Check if base_entity has options for UP and DOWN
+        if state.domain not in UP_DOWN_PLATFORMS:
+            icon_color = "#555"
+            option_color = "#555"
 
     mdi_string: str | None = state.attributes.get("icon")
     if mdi_string is None:
@@ -423,7 +428,7 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
         svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
             <rect width="72" height="72" fill="#000" />
 
-            <rect x="40" y="12" width="25" height="25" fill="#fff" rx="5" />
+            <rect x="40" y="12" width="25" height="25" fill="{option_color}" rx="5" />
             <rect x="45" y="22" width="15" height="5" fill="#000" />
             <rect x="50" y="17" width="5" height="15" fill="#000" />
 
@@ -435,7 +440,7 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
         svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
             <rect width="72" height="72" fill="#000" />
 
-            <rect x="40" y="12" width="25" height="25" fill="#fff" rx="5" />
+            <rect x="40" y="12" width="25" height="25" fill="{option_color}" rx="5" />
             <rect x="45" y="22" width="15" height="5" fill="#000" />
 
             <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
