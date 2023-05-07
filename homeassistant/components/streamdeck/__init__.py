@@ -125,7 +125,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
         # Save last pressed entity to use for UP and DOWN buttons
         hass.data[DOMAIN][f"{entry.entry_id}_current"] = base_entity
-        # TODO: Update icons for UP and DOWN buttons
+        # Update icons for UP and DOWN buttons (updates all buttons, in case there are multiple)
+        update_all_button_icons(hass, entry.entry_id)
 
     def on_ws_message(msg: SDWebsocketMessage):
         hass.bus.async_fire(
@@ -139,12 +140,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return
             hass.data[DOMAIN][f"{entry.entry_id}_current"] = entity
             _LOGGER.info("Set current button to %s", entity)
+            # Update icons for UP and DOWN buttons (updates all buttons, in case there are multiple)
+            update_all_button_icons(hass, entry.entry_id)
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = StreamDeckApi(
         host,
         on_ws_message=on_ws_message,
-        on_ws_connect=lambda: init_all_buttons(hass, entry.entry_id),
+        on_ws_connect=lambda: update_all_button_icons(hass, entry.entry_id),
     )
     hass.data[DOMAIN][f"{entry.entry_id}_current"] = None
 
@@ -330,6 +333,8 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
     api: StreamDeckApi = hass.data[DOMAIN][entry_id]
 
     entity = get_button_entity(hass, entry_id, uuid)
+    _LOGGER.info("Method update_button_icon: Setting icon of %s", entity)
+
     # Display default icon if nothing is selected
     if entity is None or entity == "" or entity == SELECT_OPTION_DELETE:
         _LOGGER.info(
@@ -346,7 +351,8 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
         return
 
     # Handle UP and DOWN options
-    if entity == SELECT_OPTION_UP:
+    base_entity = hass.data[DOMAIN][f"{entry_id}_current"]
+    if entity == SELECT_OPTION_UP and not isinstance(base_entity, str):
         svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
             <rect width="72" height="72" fill="#000" />
             <g transform="translate(16, 12) scale(0.5)">{MDI.get_icon("plus-box", "#fff")}</g>
@@ -354,7 +360,7 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
         asyncio.run_coroutine_threadsafe(api.update_icon(uuid, svg), hass.loop)
         return
 
-    if entity == SELECT_OPTION_DOWN:
+    if entity == SELECT_OPTION_DOWN and not isinstance(base_entity, str):
         svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
             <rect width="72" height="72" fill="#000" />
             <g transform="translate(16, 12) scale(0.5)">{MDI.get_icon("minus-box", "#fff")}</g>
@@ -362,10 +368,16 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
         asyncio.run_coroutine_threadsafe(api.update_icon(uuid, svg), hass.loop)
         return
 
+    if entity not in (SELECT_OPTION_UP, SELECT_OPTION_DOWN):
+        # TODO: Check if base_entity has options for UP and DOWN
+        base_entity = entity
+
     # Get state of entity
-    state = hass.states.get(entity)
+    state = hass.states.get(base_entity)
     if state is None:
-        _LOGGER.info("Method update_button_icon: State for entity %s is None", entity)
+        _LOGGER.info(
+            "Method update_button_icon: State for entity %s is None", base_entity
+        )
         return
 
     icon_color = "#000"
@@ -374,9 +386,14 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
     elif state.state == STATE_OFF:
         icon_color = "#e00"
 
+    if entity in (SELECT_OPTION_UP, SELECT_OPTION_DOWN):
+        icon_color = "#fff"
+
     mdi_string: str | None = state.attributes.get("icon")
     if mdi_string is None:
-        _LOGGER.info("Method update_button_icon: Icon of entity %s is None", entity)
+        _LOGGER.info(
+            "Method update_button_icon: Icon of entity %s is None", base_entity
+        )
         # Set default icon for entity
         mdi_string = MDI_DEFAULT
 
@@ -392,6 +409,29 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
         <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
         <g transform="translate(16, 12) scale(0.5)">{mdi}</g>
         </svg>"""
+
+    if entity == SELECT_OPTION_UP:
+        svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+            <rect width="72" height="72" fill="#000" />
+
+            <rect x="40" y="12" width="25" height="25" fill="#fff" rx="5" />
+            <rect x="45" y="22" width="15" height="5" fill="#000" />
+            <rect x="50" y="17" width="5" height="15" fill="#000" />
+
+            <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
+            <g transform="translate(14, 14) scale(0.5)">{mdi}</g>
+            </svg>"""
+
+    if entity == SELECT_OPTION_DOWN:
+        svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+            <rect width="72" height="72" fill="#000" />
+
+            <rect x="40" y="12" width="25" height="25" fill="#fff" rx="5" />
+            <rect x="45" y="22" width="15" height="5" fill="#000" />
+
+            <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
+            <g transform="translate(14, 14) scale(0.5)">{mdi}</g>
+            </svg>"""
 
     asyncio.run_coroutine_threadsafe(api.update_icon(uuid, svg), hass.loop)
 
@@ -445,7 +485,7 @@ def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
             update_button_icon(hass, entry_id, uuid)
 
 
-def init_all_buttons(hass: HomeAssistant, entry_id: str):
+def update_all_button_icons(hass: HomeAssistant, entry_id: str):
     """Initialize all buttons."""
     # Get config_entry
     loaded_entry = hass.config_entries.async_get_entry(entry_id)
