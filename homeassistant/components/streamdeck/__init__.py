@@ -40,6 +40,9 @@ from .const import (
     ATTR_UUID,
     CONF_BUTTONS,
     CONF_ENABLED_PLATFORMS,
+    DATA_API,
+    DATA_CURRENT_ENTITY,
+    DATA_SELECT_ENTITIES,
     DEFAULT_PLATFORMS,
     DOMAIN,
     EVENT_LONG_PRESS,
@@ -68,7 +71,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
         entries: list[ConfigEntry] = hass.config_entries.async_entries(DOMAIN)
         for entry in entries:
             _LOGGER.info(entry.entry_id)
-            api: StreamDeckApi = hass.data[DOMAIN][entry.entry_id]
+            api: StreamDeckApi = hass.data[DOMAIN][entry.entry_id][DATA_API]
             if not isinstance(api, StreamDeckApi):
                 return
             info = await api.get_info()
@@ -101,7 +104,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Handle UP and DOWN buttons
         base_entity = entity
         if entity in (SELECT_OPTION_UP, SELECT_OPTION_DOWN):
-            base_entity = hass.data[DOMAIN][f"{entry.entry_id}_current"]
+            base_entity = hass.data[DOMAIN][entry.entry_id][DATA_CURRENT_ENTITY]
             if base_entity is None:
                 return
 
@@ -124,7 +127,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     hass.loop,
                 )
         # Save last pressed entity to use for UP and DOWN buttons
-        hass.data[DOMAIN][f"{entry.entry_id}_current"] = base_entity
+        hass.data[DOMAIN][entry.entry_id][DATA_CURRENT_ENTITY] = base_entity
         # Update icons for UP and DOWN buttons (updates all buttons, in case there are multiple)
         update_all_button_icons(hass, entry.entry_id)
 
@@ -138,20 +141,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entity = get_button_entity(hass, entry.entry_id, msg.args)
             if entity is None:
                 return
-            hass.data[DOMAIN][f"{entry.entry_id}_current"] = entity
+            hass.data[DOMAIN][entry.entry_id][DATA_CURRENT_ENTITY] = entity
             _LOGGER.info("Set current button to %s", entity)
             # Update icons for UP and DOWN buttons (updates all buttons, in case there are multiple)
             update_all_button_icons(hass, entry.entry_id)
 
+    # Create data structure
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = StreamDeckApi(
+    hass.data[DOMAIN].setdefault(entry.entry_id, {})
+    hass.data[DOMAIN][entry.entry_id][DATA_CURRENT_ENTITY] = None
+    hass.data[DOMAIN][entry.entry_id].setdefault(DATA_SELECT_ENTITIES, [])
+
+    hass.data[DOMAIN][entry.entry_id][DATA_API] = StreamDeckApi(
         host,
         on_ws_message=on_ws_message,
         on_ws_connect=lambda: update_all_button_icons(hass, entry.entry_id),
     )
-    hass.data[DOMAIN][f"{entry.entry_id}_current"] = None
-
-    api = hass.data[DOMAIN][entry.entry_id]
+    api = hass.data[DOMAIN][entry.entry_id][DATA_API]
 
     if api is None:
         return False
@@ -176,11 +182,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    api: StreamDeckApi = hass.data[DOMAIN][entry.entry_id]
+    api: StreamDeckApi = hass.data[DOMAIN][entry.entry_id][DATA_API]
     api.stop_websocket_loop()
     if unload_ok := await hass.config_entries.async_forward_entry_unload(
-        entry, Platform.BINARY_SENSOR
-    ) and await hass.config_entries.async_forward_entry_unload(entry, Platform.SELECT):
+        entry, Platform.SELECT
+    ):
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
 
@@ -330,7 +336,7 @@ def get_button_entity(hass: HomeAssistant, entry_id: str, uuid: str) -> str | No
 
 def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
     """Update the icon shown on a button."""
-    api: StreamDeckApi = hass.data[DOMAIN][entry_id]
+    api: StreamDeckApi = hass.data[DOMAIN][entry_id][DATA_API]
 
     entity = get_button_entity(hass, entry_id, uuid)
     _LOGGER.info("Method update_button_icon: Setting icon of %s", entity)
@@ -351,7 +357,7 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
         return
 
     # Handle UP and DOWN options
-    base_entity = hass.data[DOMAIN][f"{entry_id}_current"]
+    base_entity = hass.data[DOMAIN][entry_id][DATA_CURRENT_ENTITY]
     if entity == SELECT_OPTION_UP and not isinstance(base_entity, str):
         svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
             <rect width="72" height="72" fill="#000" />
@@ -401,6 +407,9 @@ def update_button_icon(hass: HomeAssistant, entry_id: str, uuid: str):
         mdi_string = mdi_string.split(":", 1)[1]
 
     mdi = MDI.get_icon(mdi_string, icon_color)
+
+    # TODO: Use brightness percent as state for lights
+    # TODO: Use color of rgb led as icon color for lights
 
     # Change this part if necessary
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
@@ -453,7 +462,7 @@ def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
         return None
 
     # Update select options
-    selects: list[StreamDeckSelect] = hass.data[DOMAIN][f"{entry_id}-select"]
+    selects: list[StreamDeckSelect] = hass.data[DOMAIN][entry_id][DATA_SELECT_ENTITIES]
     for select in selects:
         asyncio.run_coroutine_threadsafe(
             select.async_set_options(

@@ -6,6 +6,15 @@ from homeassistant.const import Platform
 DOMAIN = "streamdeck"
 MANUFACTURER = "Elgato"
 
+# Data const
+DATA_API = "api"
+DATA_CURRENT_ENTITY = "current"
+DATA_SELECT_ENTITIES = "select"
+
+# Config entry const
+CONF_ENABLED_PLATFORMS = "enabled_platforms"
+CONF_BUTTONS = "buttons"
+
 TOGGLEABLE_PLATFORMS = [
     Platform.COVER,
     Platform.FAN,
@@ -41,9 +50,6 @@ EVENT_LONG_PRESS = "longPress"
 
 MDI_PREFIX = "mdi:"
 MDI_DEFAULT = "mdi:help"
-
-CONF_ENABLED_PLATFORMS = "enabled_platforms"
-CONF_BUTTONS = "buttons"
 
 ATTR_POSITION = "position"
 ATTR_UUID = "uuid"

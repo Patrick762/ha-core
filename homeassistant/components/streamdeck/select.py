@@ -9,14 +9,21 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import StreamDeckSelect, device_info, update_button_icon
-from .const import CONF_BUTTONS, CONF_ENABLED_PLATFORMS, DEFAULT_PLATFORMS, DOMAIN
+from .const import (
+    CONF_BUTTONS,
+    CONF_ENABLED_PLATFORMS,
+    DATA_API,
+    DATA_SELECT_ENTITIES,
+    DEFAULT_PLATFORMS,
+    DOMAIN,
+)
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Stream Deck select sensors."""
-    api: StreamDeckApi = hass.data[DOMAIN][entry.entry_id]
+    api: StreamDeckApi = hass.data[DOMAIN][entry.entry_id][DATA_API]
     info = await api.get_info()
     if isinstance(info, bool):
         return
@@ -49,6 +56,6 @@ async def async_setup_entry(
         if initial != "":
             update_button_icon(hass, entry.entry_id, button_info.uuid)
 
-    hass.data[DOMAIN][f"{entry.entry_id}-select"] = sensors_to_add
+    hass.data[DOMAIN][entry.entry_id][DATA_SELECT_ENTITIES] = sensors_to_add
 
     async_add_entities(sensors_to_add)
