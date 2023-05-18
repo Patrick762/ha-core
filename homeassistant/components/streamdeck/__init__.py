@@ -80,8 +80,18 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     f"{DOMAIN}_status", {CONF_HOST: api.host, CONF_EVENT_DATA: info}
                 )
 
+    async def sevice_dump(call: ServiceCall) -> None:
+        """Handle Service sdinfo."""
+        entries: list[ConfigEntry] = hass.config_entries.async_entries(DOMAIN)
+        for entry in entries:
+            _LOGGER.info(entry.entry_id)
+            hass.bus.async_fire(
+                f"{DOMAIN}_dump", {"entry_id": entry.entry_id, "buttons": entry.data.get(CONF_BUTTONS)}
+            )
+
     hass.services.register(DOMAIN, "sdinfo", sevice_sdinfo, schema=vol.Schema({}))
 
+    hass.services.register(DOMAIN, "dump", sevice_dump, schema=vol.Schema({}))
     return True
 
 
