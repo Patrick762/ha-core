@@ -114,6 +114,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if msg.event == EVENT_SHORT_PRESS and isinstance(msg.args, str):
             on_button_press(msg.args)
         elif msg.event == EVENT_LONG_PRESS and isinstance(msg.args, str):
+            # Update current entity
             entity = get_button_entity(hass, entry.entry_id, msg.args)
             if entity is None:
                 return
@@ -202,6 +203,7 @@ class StreamDeckSelect(SelectEntity):
             ATTR_POSITION: position,
             ATTR_DEVICE_ID: button_device,
         }
+        _LOGGER.error("Initial select: %s", initial)
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
@@ -304,11 +306,15 @@ class StreamDeckButton:
         """Set type."""
         self.button_type = button_type
 
+    def get_type(self):
+        """Get type."""
+        return self.button_type
+
     @staticmethod
     def from_dict(obj: dict, hass: HomeAssistant, entry_id: str):
         """Create object from dict."""
         button = StreamDeckButton(obj["uuid"], hass, entry_id)
-        button.set_type(obj["button_type"])
+        button.set_type(ButtonType(obj["button_type"]))
         button.set_entity(obj["entity"])
         return button
 

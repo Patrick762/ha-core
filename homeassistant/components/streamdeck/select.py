@@ -1,13 +1,15 @@
 """Select Sensors for Stream Deck Integration."""
 
 
+import logging
+
 from streamdeckapi import StreamDeckApi
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import StreamDeckButton, StreamDeckSelect, device_info
+from . import ButtonType, StreamDeckButton, StreamDeckSelect, device_info
 from .const import (
     CONF_BUTTONS,
     CONF_ENABLED_PLATFORMS,
@@ -15,7 +17,11 @@ from .const import (
     DATA_SELECT_ENTITIES,
     DEFAULT_PLATFORMS,
     DOMAIN,
+    SELECT_OPTION_DOWN,
+    SELECT_OPTION_UP,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -33,13 +39,28 @@ async def async_setup_entry(
         buttons = entry.data.get(CONF_BUTTONS)
         if isinstance(buttons, dict):
             button_config = buttons.get(button_info.uuid)
-            button = StreamDeckButton(button_info.uuid, hass, entry.entry_id)
             if isinstance(button_config, dict):
-                entity = button.get_entity()
-                if isinstance(entity, str):
-                    initial = entity
-                    # Initialize button icon on load
-                    button.update_icon()
+                button = StreamDeckButton.from_dict(button_config, hass, entry.entry_id)
+
+                _LOGGER.error(
+                    "Entity for %s: %s (type: %s)",
+                    button_info.uuid,
+                    button.get_entity(),
+                    button.get_type(),
+                )
+
+                # Set initial value for select entity
+                if button.get_type() == ButtonType.PLUS_BUTTON:
+                    initial = SELECT_OPTION_UP
+                elif button.get_type() == ButtonType.MINUS_BUTTON:
+                    initial = SELECT_OPTION_DOWN
+                else:
+                    entity = button.get_entity()
+                    if isinstance(entity, str):
+                        initial = entity
+
+                # Initialize button icon on load
+                button.update_icon()
 
         sensors_to_add.append(
             StreamDeckSelect(
