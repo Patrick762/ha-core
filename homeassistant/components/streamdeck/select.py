@@ -4,11 +4,10 @@
 from streamdeckapi import StreamDeckApi
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import StreamDeckSelect, device_info, update_button_icon
+from . import StreamDeckButton, StreamDeckSelect, device_info
 from .const import (
     CONF_BUTTONS,
     CONF_ENABLED_PLATFORMS,
@@ -34,10 +33,13 @@ async def async_setup_entry(
         buttons = entry.data.get(CONF_BUTTONS)
         if isinstance(buttons, dict):
             button_config = buttons.get(button_info.uuid)
+            button = StreamDeckButton(button_info.uuid, hass, entry.entry_id)
             if isinstance(button_config, dict):
-                entity = button_config.get(ATTR_ENTITY_ID)
+                entity = button.get_entity()
                 if isinstance(entity, str):
                     initial = entity
+                    # Initialize button icon on load
+                    button.update_icon()
 
         sensors_to_add.append(
             StreamDeckSelect(
@@ -51,10 +53,6 @@ async def async_setup_entry(
                 initial,
             )
         )
-
-        # Initialize button icon on load
-        if initial != "":
-            update_button_icon(hass, entry.entry_id, button_info.uuid)
 
     hass.data[DOMAIN][entry.entry_id][DATA_SELECT_ENTITIES] = sensors_to_add
 

@@ -8,12 +8,7 @@ import voluptuous as vol
 
 from homeassistant.components import ssdp
 from homeassistant.config_entries import ConfigFlow
-from homeassistant.const import (
-    CONF_HOST,
-    CONF_MODEL,
-    CONF_NAME,
-    CONF_UNIQUE_ID,
-)
+from homeassistant.const import CONF_HOST, CONF_MODEL, CONF_NAME, CONF_UNIQUE_ID
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
