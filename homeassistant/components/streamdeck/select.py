@@ -1,8 +1,6 @@
 """Select Sensors for Stream Deck Integration."""
 
 
-import logging
-
 from streamdeckapi import StreamDeckApi
 
 from homeassistant.config_entries import ConfigEntry
@@ -20,8 +18,6 @@ from .const import (
     SELECT_OPTION_DOWN,
     SELECT_OPTION_UP,
 )
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -41,13 +37,6 @@ async def async_setup_entry(
             button_config = buttons.get(button_info.uuid)
             if isinstance(button_config, dict):
                 button = StreamDeckButton.from_dict(button_config, hass, entry.entry_id)
-
-                _LOGGER.error(
-                    "Entity for %s: %s (type: %s)",
-                    button_info.uuid,
-                    button.get_entity(),
-                    button.get_type(),
-                )
 
                 # Set initial value for select entity
                 if button.get_type() == ButtonType.PLUS_BUTTON:

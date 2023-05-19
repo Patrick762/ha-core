@@ -44,6 +44,7 @@ from .const import (
     DATA_API,
     DATA_CURRENT_ENTITY,
     DATA_SELECT_ENTITIES,
+    DEFAULT_ICONS,
     DEFAULT_PLATFORMS,
     DOMAIN,
     EVENT_LONG_PRESS,
@@ -203,7 +204,6 @@ class StreamDeckSelect(SelectEntity):
             ATTR_POSITION: position,
             ATTR_DEVICE_ID: button_device,
         }
-        _LOGGER.error("Initial select: %s", initial)
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
@@ -524,8 +524,19 @@ class StreamDeckButton:
             _LOGGER.info(
                 "Method StreamDeckButton.update_icon: Icon of entity %s is None", entity
             )
+
             # Set default icon for entity
             mdi_string = MDI_DEFAULT
+
+            # Try to use platform default icon
+            platform_mdi = DEFAULT_ICONS.get(state.domain)
+            if platform_mdi is not None:
+                mdi_string = platform_mdi
+                _LOGGER.info(
+                    "Method StreamDeckButton.update_icon: Using platform default icon for %s",
+                    entity,
+                )
+
         if mdi_string.startswith(MDI_PREFIX):
             mdi_string = mdi_string.split(":", 1)[1]
         mdi = MDI.get_icon(mdi_string, icon_color)

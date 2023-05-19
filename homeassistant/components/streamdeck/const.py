@@ -28,6 +28,18 @@ TOGGLEABLE_PLATFORMS = [
     Platform.SWITCH,
     Platform.VACUUM,
 ]
+DEFAULT_ICONS = {
+    Platform.COVER: "mdi:window-closed",
+    Platform.FAN: "mdi:fan",
+    Platform.HUMIDIFIER: "mdi:air-humidifier",
+    input_boolean.DOMAIN: "mdi:toggle-switch-off-outline",
+    Platform.LIGHT: "mdi:lightbulb",
+    Platform.MEDIA_PLAYER: "mdi:cast",
+    Platform.REMOTE: "mdi:remote",
+    Platform.SIREN: "mdi:bullhorn",
+    Platform.SWITCH: "mdi:toggle-switch-variant",
+    Platform.VACUUM: "mdi:vacuum",
+}
 UP_DOWN_PLATFORMS = [Platform.LIGHT]
 UP_DOWN_STEPS = 15
 
