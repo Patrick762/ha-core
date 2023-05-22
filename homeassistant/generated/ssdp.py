@@ -260,7 +260,7 @@ SSDP = {
     ],
     "streamdeck": [
         {
-            "st": "urn:home-assistant.io:device:stream-deck",
+            "st": "urn:home-assistant-device:stream-deck",
         },
     ],
     "syncthru": [
