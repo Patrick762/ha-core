@@ -16,6 +16,7 @@ from .const import (
     AVAILABLE_PLATFORMS,
     CONF_BUTTONS,
     CONF_ENABLED_PLATFORMS,
+    CONF_SHOW_NAME,
     CONF_VERSION,
     DEFAULT_PLATFORMS,
     DOMAIN,
@@ -55,7 +56,7 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
         info = await self._get_unique_id()
         if not isinstance(info, SDInfo):
             return self.async_abort(reason="no_streamdeck")
-        _LOGGER.debug(
+        _LOGGER.info(
             "Found Streamdeck at host %s with unique_id %s", self.host, self.unique_id
         )
         return self.async_show_form(step_id="user")
@@ -82,6 +83,9 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
                     {
                         vol.Required(CONF_NAME, default="Stream Deck"): str,
                         vol.Required(CONF_HOST, default=""): str,
+                        vol.Required(
+                            CONF_SHOW_NAME, default=True
+                        ): selector.BooleanSelector(),
                         vol.Required(
                             CONF_ENABLED_PLATFORMS,
                             default=DEFAULT_PLATFORMS,
@@ -110,6 +114,7 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_UNIQUE_ID: self.unique_id,
                     CONF_MODEL: get_model(info),
                     CONF_VERSION: info.application.version,
+                    CONF_SHOW_NAME: user_input[CONF_SHOW_NAME],
                     CONF_ENABLED_PLATFORMS: user_input[CONF_ENABLED_PLATFORMS],
                     CONF_BUTTONS: {},
                 }
@@ -119,6 +124,7 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(CONF_NAME, default="Stream Deck"): str,
                 vol.Required(CONF_HOST, default=self.host): str,
+                vol.Required(CONF_SHOW_NAME, default=True): selector.BooleanSelector(),
                 vol.Required(
                     CONF_ENABLED_PLATFORMS,
                     default=DEFAULT_PLATFORMS,

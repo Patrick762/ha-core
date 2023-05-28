@@ -15,6 +15,7 @@ DATA_SELECT_ENTITIES = "select"
 CONF_BUTTONS = "buttons"
 CONF_ENABLED_PLATFORMS = "enabled_platforms"
 CONF_VERSION = "version"
+CONF_SHOW_NAME = "show_name"
 
 TOGGLEABLE_PLATFORMS = [
     Platform.COVER,
@@ -48,8 +49,8 @@ AVAILABLE_PLATFORMS: list[str] = TOGGLEABLE_PLATFORMS + [
 ]
 DEFAULT_PLATFORMS: list[str] = [Platform.LIGHT]
 
-SELECT_OPTION_UP = ">>UP<<"
-SELECT_OPTION_DOWN = ">>DOWN<<"
+SELECT_OPTION_UP = ">>PLUS<<"
+SELECT_OPTION_DOWN = ">>MINUS<<"
 SELECT_DEFAULT_OPTIONS = [
     "",
     SELECT_OPTION_UP,
@@ -64,3 +65,10 @@ MDI_DEFAULT = "mdi:help"
 
 ATTR_POSITION = "position"
 ATTR_UUID = "uuid"
+
+COLOR_ON = "#ffc107"
+COLOR_OFF = "#44739e"
+COLOR_ACTIVE = "#fff"
+COLOR_INACTIVE = "#6f6f6f"
+COLOR_UNAVAILABLE = "#6f6f6f"
+COLOR_MODIFIER = "#eee"

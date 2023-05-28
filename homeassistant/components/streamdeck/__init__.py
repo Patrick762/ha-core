@@ -28,6 +28,7 @@ from homeassistant.const import (
     SERVICE_TURN_ON,
     STATE_OFF,
     STATE_ON,
+    STATE_UNAVAILABLE,
     Platform,
 )
 from homeassistant.core import Event, HomeAssistant, ServiceCall
@@ -38,8 +39,15 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     ATTR_POSITION,
     ATTR_UUID,
+    COLOR_ACTIVE,
+    COLOR_INACTIVE,
+    COLOR_MODIFIER,
+    COLOR_OFF,
+    COLOR_ON,
+    COLOR_UNAVAILABLE,
     CONF_BUTTONS,
     CONF_ENABLED_PLATFORMS,
+    CONF_SHOW_NAME,
     CONF_VERSION,
     DATA_API,
     DATA_CURRENT_ENTITY,
@@ -121,19 +129,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.data[DOMAIN][entry.entry_id][DATA_CURRENT_ENTITY] = entity
             _LOGGER.info("Set current button to %s", entity)
             # Update icons for UP and DOWN buttons (updates all buttons, in case there are multiple)
-            update_all_button_icons(hass, entry.entry_id)
+            StreamDeckButton.update_all_button_icons(hass, entry.entry_id)
 
     # Create data structure
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].setdefault(entry.entry_id, {})
     hass.data[DOMAIN][entry.entry_id][DATA_CURRENT_ENTITY] = None
+    hass.data[DOMAIN][entry.entry_id][CONF_SHOW_NAME] = entry.data.get(CONF_SHOW_NAME)
     hass.data[DOMAIN][entry.entry_id].setdefault(DATA_SELECT_ENTITIES, [])
 
     # Create API client
     hass.data[DOMAIN][entry.entry_id][DATA_API] = StreamDeckApi(
         host,
         on_ws_message=on_ws_message,
-        on_ws_connect=lambda: update_all_button_icons(hass, entry.entry_id),
+        on_ws_connect=lambda: StreamDeckButton.update_all_button_icons(
+            hass, entry.entry_id
+        ),
     )
     api = hass.data[DOMAIN][entry.entry_id][DATA_API]
 
@@ -147,6 +158,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(f"Timeout while connecting to {api.host}")
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Fill config entry with buttons
+    button_entries = {}
+    for _, button_info in info.buttons.items():
+        button = StreamDeckButton(button_info.uuid, hass, entry.entry_id)
+        button.set_type(ButtonType.ENTITY_BUTTON)
+        button.set_entity("")
+        button_entries[button_info.uuid] = button.to_dict()
+    current_buttons: dict = entry.data[CONF_BUTTONS]
+    for uuid, config in current_buttons.items():
+        button = StreamDeckButton.from_dict(config, hass, entry.entry_id)
+        button_entries[uuid] = button.to_dict()
+    changed = hass.config_entries.async_update_entry(
+        entry,
+        data={
+            **entry.data,
+            **{CONF_BUTTONS: button_entries},
+        },
+    )
+    if changed is False:
+        _LOGGER.error(
+            "Method async_setup_entry: Config entry %s has not been changed",
+            entry.entry_id,
+        )
 
     api.start_websocket_loop()
 
@@ -381,7 +416,7 @@ class StreamDeckButton:
             self.hass.data[DOMAIN][self.entry_id][DATA_CURRENT_ENTITY] = self.entity
 
             # Update icons for UP and DOWN buttons (updates all buttons, in case there are multiple)
-            update_all_button_icons(self.hass, self.entry_id)
+            StreamDeckButton.update_all_button_icons(self.hass, self.entry_id)
 
         if self.button_type in (ButtonType.PLUS_BUTTON, ButtonType.MINUS_BUTTON):
             # Get current entity
@@ -432,13 +467,39 @@ class StreamDeckButton:
                     self.hass.loop,
                 )
 
+    @staticmethod
+    def update_all_button_icons(hass: HomeAssistant, entry_id: str):
+        """Initialize all buttons."""
+        # Get config_entry
+        loaded_entry = hass.config_entries.async_get_entry(entry_id)
+        if loaded_entry is None:
+            return None
+
+        # Get buttons
+        buttons = loaded_entry.data.get(CONF_BUTTONS)
+        if not isinstance(buttons, dict):
+            _LOGGER.error(
+                "Method update_all_button_icons: Config entry %s has no data for 'buttons'",
+                entry_id,
+            )
+            return
+
+        _LOGGER.info(
+            "Method update_all_button_icons: Found %s buttons. Updating icons",
+            len(buttons),
+        )
+
+        for _, button_config in buttons.items():
+            button = StreamDeckButton.from_dict(button_config, hass, entry_id)
+            button.update_icon()
+
     def update_icon(self):
         """Update icon of button."""
         entity = self.entity
 
         _LOGGER.info(
             "Method StreamDeckButton.update_icon: Setting icon of %s, button type: %s",
-            entity,
+            self.uuid,
             self.button_type,
         )
 
@@ -454,6 +515,9 @@ class StreamDeckButton:
                 "Method StreamDeckButton.update_icon: No entity selected for %s. Using default icon",
                 self.uuid,
             )
+            asyncio.run_coroutine_threadsafe(
+                self.api.update_icon(self.uuid, svg), self.hass.loop
+            )
             return
 
         if self.button_type in (ButtonType.PLUS_BUTTON, ButtonType.MINUS_BUTTON):
@@ -462,17 +526,18 @@ class StreamDeckButton:
             if isinstance(base_entity, str):
                 entity = base_entity
             else:
+                # Initial Plus and Minus Buttons
                 if self.button_type == ButtonType.PLUS_BUTTON:
-                    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+                    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
                         <rect width="72" height="72" fill="#000" />
-                        <rect x="10" y="10" width="52" height="52" fill="#fff" rx="5" />
+                        <rect x="10" y="10" width="52" height="52" fill="{COLOR_INACTIVE}" rx="5" />
                         <rect x="15" y="31" width="42" height="10" fill="#000" />
                         <rect x="31" y="15" width="10" height="42" fill="#000" />
                         </svg>"""
                 elif self.button_type == ButtonType.MINUS_BUTTON:
-                    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+                    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
                         <rect width="72" height="72" fill="#000" />
-                        <rect x="10" y="10" width="52" height="52" fill="#fff" rx="5" />
+                        <rect x="10" y="10" width="52" height="52" fill="{COLOR_INACTIVE}" rx="5" />
                         <rect x="15" y="31" width="42" height="10" fill="#000" />
                         </svg>"""
                 asyncio.run_coroutine_threadsafe(
@@ -490,25 +555,30 @@ class StreamDeckButton:
             return
 
         # Set icon color
-        icon_color = "#000"
-        modifier_color = "#fff"
-        if state.state == STATE_ON:
-            icon_color = "#0e0"
+        icon_color = COLOR_ACTIVE
+        modifier_color = COLOR_MODIFIER
+        if state.state == STATE_UNAVAILABLE:
+            icon_color = COLOR_UNAVAILABLE
+        elif state.state == STATE_ON:
+            icon_color = COLOR_ON
         elif state.state == STATE_OFF:
-            icon_color = "#e00"
+            icon_color = COLOR_OFF
 
         # Use color of rgb led as icon color for lights
-        if state.domain == Platform.LIGHT:
-            rgb_color = state.attributes.get("rgb_color")
-            if isinstance(rgb_color, tuple):
-                icon_color = f"#{rgb_color[0]:02x}{rgb_color[1]:02x}{rgb_color[2]:02x}"
+        # if state.domain == Platform.LIGHT:
+        #    rgb_color = state.attributes.get("rgb_color")
+        #    if isinstance(rgb_color, tuple):
+        #        icon_color = f"#{rgb_color[0]:02x}{rgb_color[1]:02x}{rgb_color[2]:02x}"
 
         # Set icon color for Plus and Minus buttons
         if self.button_type in (ButtonType.PLUS_BUTTON, ButtonType.MINUS_BUTTON):
-            icon_color = "#fff"
-            if state.domain not in UP_DOWN_PLATFORMS:
-                icon_color = "#555"
-                modifier_color = "#555"
+            icon_color = COLOR_ACTIVE
+            if (
+                state.domain not in UP_DOWN_PLATFORMS
+                or state.state == STATE_UNAVAILABLE
+            ):
+                icon_color = COLOR_INACTIVE
+                modifier_color = COLOR_INACTIVE
 
         # Get MDI Icon
         mdi_string: str | None = state.attributes.get("icon")
@@ -533,31 +603,54 @@ class StreamDeckButton:
             mdi_string = mdi_string.split(":", 1)[1]
         mdi = MDI.get_icon(mdi_string, icon_color)
 
-        if self.button_type == ButtonType.PLUS_BUTTON:
-            svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-                <rect width="72" height="72" fill="#000" />
-                <rect x="40" y="12" width="25" height="25" fill="{modifier_color}" rx="5" />
-                <rect x="45" y="22" width="15" height="5" fill="#000" />
-                <rect x="50" y="17" width="5" height="15" fill="#000" />
-                <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
-                <g transform="translate(14, 14) scale(0.5)">{mdi}</g>
-                </svg>"""
-        elif self.button_type == ButtonType.MINUS_BUTTON:
-            svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-                <rect width="72" height="72" fill="#000" />
-                <rect x="40" y="12" width="25" height="25" fill="{modifier_color}" rx="5" />
-                <rect x="45" y="22" width="15" height="5" fill="#000" />
-                <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
-                <g transform="translate(14, 14) scale(0.5)">{mdi}</g>
-                </svg>"""
-        elif self.button_type == ButtonType.ENTITY_BUTTON:
-            # TODO: Use brightness percent as state for lights
-            svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-                <rect width="72" height="72" fill="#000" />
-                <text text-anchor="middle" x="35" y="15" fill="#fff" font-size="12">{state.state}{state.attributes.get(ATTR_UNIT_OF_MEASUREMENT, "")}</text>
-                <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
-                <g transform="translate(16, 12) scale(0.5)">{mdi}</g>
-                </svg>"""
+        if self.hass.data[DOMAIN][self.entry_id][CONF_SHOW_NAME] is True:
+            if self.button_type == ButtonType.PLUS_BUTTON:
+                svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+                    <rect width="72" height="72" fill="#000" />
+                    <rect x="40" y="12" width="25" height="25" fill="{modifier_color}" rx="5" />
+                    <rect x="45" y="22" width="15" height="5" fill="#000" />
+                    <rect x="50" y="17" width="5" height="15" fill="#000" />
+                    <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
+                    <g transform="translate(14, 14) scale(0.5)">{mdi}</g>
+                    </svg>"""
+            elif self.button_type == ButtonType.MINUS_BUTTON:
+                svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+                    <rect width="72" height="72" fill="#000" />
+                    <rect x="40" y="12" width="25" height="25" fill="{modifier_color}" rx="5" />
+                    <rect x="45" y="22" width="15" height="5" fill="#000" />
+                    <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
+                    <g transform="translate(14, 14) scale(0.5)">{mdi}</g>
+                    </svg>"""
+            elif self.button_type == ButtonType.ENTITY_BUTTON:
+                # TODO: Use brightness percent as state for lights
+                svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+                    <rect width="72" height="72" fill="#000" />
+                    <text text-anchor="middle" x="35" y="15" fill="#fff" font-size="12">{state.state}{state.attributes.get(ATTR_UNIT_OF_MEASUREMENT, "")}</text>
+                    <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
+                    <g transform="translate(16, 12) scale(0.5)">{mdi}</g>
+                    </svg>"""
+        else:
+            # Show Entity Icon without name
+            if self.button_type == ButtonType.PLUS_BUTTON:
+                svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+                    <rect width="72" height="72" fill="#000" />
+                    <rect x="40" y="12" width="25" height="25" fill="{modifier_color}" rx="5" />
+                    <rect x="45" y="22" width="15" height="5" fill="#000" />
+                    <rect x="50" y="17" width="5" height="15" fill="#000" />
+                    <g transform="translate(10, 10) scale(0.7)">{mdi}</g>
+                    </svg>"""
+            elif self.button_type == ButtonType.MINUS_BUTTON:
+                svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+                    <rect width="72" height="72" fill="#000" />
+                    <rect x="40" y="12" width="25" height="25" fill="{modifier_color}" rx="5" />
+                    <rect x="45" y="22" width="15" height="5" fill="#000" />
+                    <g transform="translate(10, 10) scale(0.7)">{mdi}</g>
+                    </svg>"""
+            elif self.button_type == ButtonType.ENTITY_BUTTON:
+                svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+                    <rect width="72" height="72" fill="#000" />
+                    <g transform="translate(5, 0) scale(0.8)">{mdi}</g>
+                    </svg>"""
 
         asyncio.run_coroutine_threadsafe(
             self.api.update_icon(self.uuid, svg), self.hass.loop
@@ -659,24 +752,3 @@ def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
         button = StreamDeckButton.from_dict(button_config, hass, entry_id)
         if button.get_entity() == entity_id:
             button.update_icon()
-
-
-def update_all_button_icons(hass: HomeAssistant, entry_id: str):
-    """Initialize all buttons."""
-    # Get config_entry
-    loaded_entry = hass.config_entries.async_get_entry(entry_id)
-    if loaded_entry is None:
-        return None
-
-    # Get buttons
-    buttons = loaded_entry.data.get(CONF_BUTTONS)
-    if not isinstance(buttons, dict):
-        _LOGGER.error(
-            "Method on_entity_state_change: Config entry %s has no data for 'buttons'",
-            entry_id,
-        )
-        return
-
-    for _, button_config in buttons.items():
-        button = StreamDeckButton.from_dict(button_config, hass, entry_id)
-        button.update_icon()
