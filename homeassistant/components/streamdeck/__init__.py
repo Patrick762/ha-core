@@ -53,7 +53,6 @@ from .const import (
     MDI_DEFAULT,
     MDI_PREFIX,
     SELECT_DEFAULT_OPTIONS,
-    SELECT_OPTION_DELETE,
     SELECT_OPTION_DOWN,
     SELECT_OPTION_UP,
     TOGGLEABLE_PLATFORMS,
@@ -357,11 +356,7 @@ class StreamDeckButton:
     def button_pressed(self):
         """Handle button press."""
 
-        if (
-            self.button_type == ButtonType.ENTITY_BUTTON
-            and self.entity != ""
-            and self.entity != SELECT_OPTION_DELETE
-        ):
+        if self.button_type == ButtonType.ENTITY_BUTTON and self.entity != "":
             # Get current state
             state = self.hass.states.get(self.entity)
             if state is None:
@@ -454,10 +449,7 @@ class StreamDeckButton:
                 <text text-anchor="middle" x="35" y="60" fill="#fff" font-size="13">{self.uuid.split("-")[2]}</text>
                 </svg>"""
 
-        if self.button_type == ButtonType.ENTITY_BUTTON and self.entity in (
-            "",
-            SELECT_OPTION_DELETE,
-        ):
+        if self.button_type == ButtonType.ENTITY_BUTTON and self.entity == "":
             _LOGGER.info(
                 "Method StreamDeckButton.update_icon: No entity selected for %s. Using default icon",
                 self.uuid,
@@ -632,7 +624,11 @@ def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
         return None
 
     # Update select options
-    selects: list[StreamDeckSelect] = hass.data[DOMAIN][entry_id][DATA_SELECT_ENTITIES]
+    domain_data: dict = hass.data[DOMAIN]
+    entry_data = domain_data.get(entry_id)
+    if not isinstance(entry_data, dict):
+        return
+    selects: list[StreamDeckSelect] = entry_data[DATA_SELECT_ENTITIES]
     for select in selects:
         asyncio.run_coroutine_threadsafe(
             select.async_set_options(
