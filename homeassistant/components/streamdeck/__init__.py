@@ -10,11 +10,14 @@ from mdiicons import MDI
 from streamdeckapi import SDWebsocketMessage, StreamDeckApi
 import voluptuous as vol
 
+from homeassistant.components import climate
+from homeassistant.components.climate import SERVICE_SET_TEMPERATURE
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_DEVICE_ID,
     ATTR_ENTITY_ID,
+    ATTR_TEMPERATURE,
     ATTR_UNIT_OF_MEASUREMENT,
     CONF_BRIGHTNESS,
     CONF_ENTITY_ID,
@@ -39,6 +42,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     ATTR_POSITION,
     ATTR_UUID,
+    CLIMATE_UP_DOWN_STEPS,
     COLOR_ACTIVE,
     COLOR_INACTIVE,
     COLOR_MODIFIER,
@@ -57,6 +61,7 @@ from .const import (
     DOMAIN,
     EVENT_LONG_PRESS,
     EVENT_SHORT_PRESS,
+    LIGHT_UP_DOWN_STEPS,
     MANUFACTURER,
     MDI_DEFAULT,
     MDI_PREFIX,
@@ -65,7 +70,6 @@ from .const import (
     SELECT_OPTION_UP,
     TOGGLEABLE_PLATFORMS,
     UP_DOWN_PLATFORMS,
-    UP_DOWN_STEPS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -443,6 +447,7 @@ class StreamDeckButton:
                 # Get current brightness
                 brightness = state.attributes.get(CONF_BRIGHTNESS)
                 if not isinstance(brightness, int):
+                    # If light is not on
                     _LOGGER.debug(
                         "Method StreamDeckButton.button_pressed: %s has no %s",
                         state.entity_id,
@@ -452,17 +457,45 @@ class StreamDeckButton:
 
                 # Update brightness
                 if self.button_type == ButtonType.PLUS_BUTTON:
-                    brightness = brightness + UP_DOWN_STEPS
+                    brightness = brightness + LIGHT_UP_DOWN_STEPS
                 elif self.button_type == ButtonType.MINUS_BUTTON:
-                    brightness = brightness - UP_DOWN_STEPS
+                    brightness = brightness - LIGHT_UP_DOWN_STEPS
 
-                # Write new brightness TODO: check why it doesn't turn on if off
+                # Write new brightness
                 asyncio.run_coroutine_threadsafe(
                     self.hass.services.async_call(
                         state.domain,
                         SERVICE_TURN_ON,
                         target={CONF_ENTITY_ID: state.entity_id},
                         service_data={CONF_BRIGHTNESS: brightness},
+                    ),
+                    self.hass.loop,
+                )
+            elif state.domain == climate.DOMAIN:
+                # Get current temperature
+                temperature = state.attributes.get(ATTR_TEMPERATURE)
+                if not isinstance(temperature, int):
+                    # If climate device is not on
+                    _LOGGER.debug(
+                        "Method StreamDeckButton.button_pressed: %s has no %s",
+                        state.entity_id,
+                        CONF_BRIGHTNESS,
+                    )
+                    return
+
+                # Update temperature
+                if self.button_type == ButtonType.PLUS_BUTTON:
+                    temperature = temperature + CLIMATE_UP_DOWN_STEPS
+                elif self.button_type == ButtonType.MINUS_BUTTON:
+                    temperature = temperature - CLIMATE_UP_DOWN_STEPS
+
+                # Write new temperature
+                asyncio.run_coroutine_threadsafe(
+                    self.hass.services.async_call(
+                        state.domain,
+                        SERVICE_SET_TEMPERATURE,
+                        target={CONF_ENTITY_ID: state.entity_id},
+                        service_data={ATTR_TEMPERATURE: temperature},
                     ),
                     self.hass.loop,
                 )

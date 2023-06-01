@@ -1,6 +1,6 @@
 """Constants for the Stream Deck integration."""
 
-from homeassistant.components import input_boolean
+from homeassistant.components import climate, input_boolean
 from homeassistant.const import Platform
 
 DOMAIN = "streamdeck"
@@ -18,6 +18,7 @@ CONF_VERSION = "version"
 CONF_SHOW_NAME = "show_name"
 
 TOGGLEABLE_PLATFORMS = [
+    climate.DOMAIN,
     Platform.COVER,
     Platform.FAN,
     Platform.HUMIDIFIER,
@@ -30,6 +31,7 @@ TOGGLEABLE_PLATFORMS = [
     Platform.VACUUM,
 ]
 DEFAULT_ICONS = {
+    climate.DOMAIN: "mdi:home-thermometer-outline",
     Platform.COVER: "mdi:window-closed",
     Platform.FAN: "mdi:fan",
     Platform.HUMIDIFIER: "mdi:air-humidifier",
@@ -41,13 +43,12 @@ DEFAULT_ICONS = {
     Platform.SWITCH: "mdi:toggle-switch-variant",
     Platform.VACUUM: "mdi:vacuum",
 }
-UP_DOWN_PLATFORMS = [Platform.LIGHT]
-UP_DOWN_STEPS = 15
+UP_DOWN_PLATFORMS = [climate.DOMAIN, Platform.LIGHT]
+LIGHT_UP_DOWN_STEPS = 15
+CLIMATE_UP_DOWN_STEPS = 5
 
-AVAILABLE_PLATFORMS: list[str] = TOGGLEABLE_PLATFORMS + [
-    Platform.BINARY_SENSOR,
-]
-DEFAULT_PLATFORMS: list[str] = [Platform.LIGHT]
+AVAILABLE_PLATFORMS: list[str] = TOGGLEABLE_PLATFORMS
+DEFAULT_PLATFORMS: list[str] = [climate.DOMAIN, Platform.LIGHT]
 
 SELECT_OPTION_UP = ">>PLUS<<"
 SELECT_OPTION_DOWN = ">>MINUS<<"
