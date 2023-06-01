@@ -3,7 +3,7 @@ import logging
 from typing import Any
 from urllib.parse import urlparse
 
-from streamdeckapi import SDInfo, StreamDeckApi, get_model
+from streamdeckapi import SDDevice, SDInfo, StreamDeckApi, get_model
 import voluptuous as vol
 
 from homeassistant.components import ssdp
@@ -35,11 +35,13 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
         deck = StreamDeckApi(self.host)
         info = await deck.get_info()
         if not isinstance(info, SDInfo) or len(info.devices) == 0:
-            self.unique_id = None
+            self.unique_id = self.host
             return None
-        self.unique_id = ""
-        for device in info.devices:
-            self.unique_id = f"{self.unique_id}|{device.id}"
+        self.unique_id = self.host
+        devices: list[SDDevice] = info.devices
+        for device in devices:
+            if isinstance(device, SDDevice):
+                self.unique_id = f"{self.unique_id}|{device.id}"
         # Prevent duplicates
         await self.async_set_unique_id(self.unique_id)
         self._abort_if_unique_id_configured()
@@ -118,7 +120,9 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_ENABLED_PLATFORMS: user_input[CONF_ENABLED_PLATFORMS],
                     CONF_BUTTONS: {},
                 }
-                return self.async_create_entry(title=user_input[CONF_NAME], data=data)
+                return self.async_create_entry(
+                    title=f"{user_input[CONF_NAME]} at {self.host}", data=data
+                )
 
         data_schema = vol.Schema(
             {

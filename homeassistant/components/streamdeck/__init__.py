@@ -23,9 +23,9 @@ from homeassistant.const import (
     CONF_ENTITY_ID,
     CONF_EVENT_DATA,
     CONF_HOST,
-    CONF_MAC,
     CONF_MODEL,
     CONF_NAME,
+    CONF_UNIQUE_ID,
     EVENT_STATE_CHANGED,
     SERVICE_TOGGLE,
     SERVICE_TURN_ON,
@@ -100,7 +100,11 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
             _LOGGER.info(entry.entry_id)
             hass.bus.async_fire(
                 f"{DOMAIN}_dump",
-                {"entry_id": entry.entry_id, "buttons": entry.data.get(CONF_BUTTONS)},
+                {
+                    "entry_id": entry.entry_id,
+                    CONF_BUTTONS: entry.data.get(CONF_BUTTONS),
+                    CONF_UNIQUE_ID: entry.data.get(CONF_UNIQUE_ID),
+                },
             )
 
     hass.services.register(DOMAIN, "sdinfo", sevice_sdinfo, schema=vol.Schema({}))
@@ -202,8 +206,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     api: StreamDeckApi = hass.data[DOMAIN][entry.entry_id][DATA_API]
     api.stop_websocket_loop()
-    if unload_ok := await hass.config_entries.async_forward_entry_unload(
-        entry, Platform.SELECT
+    if unload_ok := await hass.config_entries.async_unload_platforms(
+        entry, [Platform.SELECT]
     ):
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
@@ -219,7 +223,6 @@ class StreamDeckSelect(SelectEntity):
 
     def __init__(
         self,
-        entry_title: str,
         device: DeviceInfo | None,
         uuid: str,
         entry_id: str,
@@ -229,8 +232,8 @@ class StreamDeckSelect(SelectEntity):
         initial: str = "",
     ) -> None:
         """Init the select sensor."""
-        self._attr_name = f"{entry_title} {uuid} ({position})"
-        self._attr_unique_id = get_unique_id(f"{entry_title} {uuid}")
+        self._attr_name = f"{uuid} ({position})"
+        self._attr_unique_id = get_unique_id(f"{uuid}")
         self._attr_device_info = device
         self._sd_entry_id = entry_id
         self._btn_uuid = uuid
@@ -706,10 +709,7 @@ def get_unique_id(name: str, sensor_type: str | None = None):
 def device_info(entry) -> DeviceInfo:
     """Device info."""
     return DeviceInfo(
-        identifiers={
-            # Serial numbers are unique identifiers within a specific domain
-            (DOMAIN, entry.data.get(CONF_MAC, ""))
-        },
+        identifiers={(DOMAIN, entry.data.get(CONF_UNIQUE_ID))},
         name=entry.data.get(CONF_NAME, None),
         manufacturer=MANUFACTURER,
         model=entry.data.get(CONF_MODEL, None),

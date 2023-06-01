@@ -20,6 +20,7 @@ from .const import (
 )
 
 
+# requests, aiohttp, pillow
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
@@ -53,7 +54,6 @@ async def async_setup_entry(
 
         sensors_to_add.append(
             StreamDeckSelect(
-                entry.title,
                 device_info(entry),
                 button_info.uuid,
                 entry.entry_id,
