@@ -304,7 +304,6 @@ class StreamDeckSelect(SelectEntity):
                 self.current_option,
                 ", ".join(self.options),
             )
-            # self._attr_current_option = options[0]
 
         self.async_write_ha_state()
 
@@ -423,6 +422,7 @@ class StreamDeckButton:
             self.hass.data[DOMAIN][self.entry_id][DATA_CURRENT_ENTITY] = self.entity
 
             # Update icons for UP and DOWN buttons (updates all buttons, in case there are multiple)
+            # TODO too slow for Raspberry Pi Zero Server
             StreamDeckButton.update_all_button_icons(self.hass, self.entry_id)
 
         if self.button_type in (ButtonType.PLUS_BUTTON, ButtonType.MINUS_BUTTON):

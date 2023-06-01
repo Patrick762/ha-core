@@ -7,7 +7,7 @@ from streamdeckapi import SDDevice, SDInfo, StreamDeckApi, get_model
 import voluptuous as vol
 
 from homeassistant.components import ssdp
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_MODEL, CONF_NAME, CONF_UNIQUE_ID
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
@@ -146,4 +146,44 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=data_schema,
             errors=errors,
             last_step=True,
+        )
+
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> OptionsFlow:
+        """Create the options flow."""
+        return OptionsFlowHandler(config_entry)
+
+class OptionsFlowHandler(OptionsFlow):
+    """Handle a option flow."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title=f"{user_input[CONF_NAME]} at {user_input[CONF_HOST]}", data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SHOW_NAME, default=user_input.get(CONF_SHOW_NAME, True)): selector.BooleanSelector(),
+                    vol.Required(
+                        CONF_ENABLED_PLATFORMS,
+                        default=user_input.get(CONF_ENABLED_PLATFORMS, DEFAULT_PLATFORMS),
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=AVAILABLE_PLATFORMS,
+                            multiple=True,
+                            mode=selector.SelectSelectorMode.LIST,
+                        )
+                    ),
+                }
+            ),
         )

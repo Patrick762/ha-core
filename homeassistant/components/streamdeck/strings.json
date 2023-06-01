@@ -23,5 +23,15 @@
       "no_hostname": "Can't resolve hostname from SSDP",
       "no_streamdeck": "Device is not a Stream Deck"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "show_name": "Show Entity Name",
+          "enabled_platforms": "Enabled Platforms"
+        }
+      }
+    }
   }
 }
