@@ -11,8 +11,18 @@ from streamdeckapi import SDWebsocketMessage, StreamDeckApi
 import voluptuous as vol
 
 from homeassistant.components import climate
-from homeassistant.components.climate import SERVICE_SET_TEMPERATURE
-from homeassistant.components.media_player import ATTR_MEDIA_VOLUME_LEVEL, STATE_PLAYING, SERVICE_MEDIA_PLAY, SERVICE_MEDIA_PAUSE
+from homeassistant.components.climate import (
+    HVAC_MODE_COOL,
+    HVAC_MODE_HEAT,
+    HVAC_MODE_HEAT_COOL,
+    SERVICE_SET_TEMPERATURE,
+)
+from homeassistant.components.media_player import (
+    ATTR_MEDIA_VOLUME_LEVEL,
+    SERVICE_MEDIA_PAUSE,
+    SERVICE_MEDIA_PLAY,
+    STATE_PLAYING,
+)
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -30,7 +40,6 @@ from homeassistant.const import (
     EVENT_STATE_CHANGED,
     SERVICE_TOGGLE,
     SERVICE_TURN_ON,
-    SERVICE_TURN_OFF,
     SERVICE_VOLUME_SET,
     STATE_OFF,
     STATE_ON,
@@ -416,7 +425,7 @@ class StreamDeckButton:
             # Toggle entity
             if state.domain == climate.DOMAIN:
                 if (
-                    state.attributes.get(climate.ATTR_HVAC_MODE)
+                    state.attributes.get(climate.ATTR_HVAC_ACTION)
                     == climate.HVAC_MODE_OFF
                 ):
                     asyncio.run_coroutine_threadsafe(
@@ -670,7 +679,14 @@ class StreamDeckButton:
         modifier_color = COLOR_MODIFIER
         if state.state == STATE_UNAVAILABLE:
             icon_color = COLOR_UNAVAILABLE
-        elif state.state == STATE_ON or (state.domain == Platform.MEDIA_PLAYER and state.state != STATE_OFF):
+        elif (
+            state.state == STATE_ON
+            or (state.domain == Platform.MEDIA_PLAYER and state.state != STATE_OFF)
+            or (
+                state.domain == climate.DOMAIN
+                and state.state in (HVAC_MODE_HEAT, HVAC_MODE_HEAT_COOL, HVAC_MODE_COOL)
+            )
+        ):
             icon_color = COLOR_ON
         elif state.state == STATE_OFF:
             icon_color = COLOR_OFF
