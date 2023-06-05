@@ -12,6 +12,7 @@ import voluptuous as vol
 
 from homeassistant.components import climate
 from homeassistant.components.climate import SERVICE_SET_TEMPERATURE
+from homeassistant.components.media_player import ATTR_MEDIA_VOLUME_LEVEL
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -29,6 +30,7 @@ from homeassistant.const import (
     EVENT_STATE_CHANGED,
     SERVICE_TOGGLE,
     SERVICE_TURN_ON,
+    SERVICE_VOLUME_SET,
     STATE_OFF,
     STATE_ON,
     STATE_UNAVAILABLE,
@@ -70,6 +72,7 @@ from .const import (
     SELECT_OPTION_UP,
     TOGGLEABLE_PLATFORMS,
     UP_DOWN_PLATFORMS,
+    VOLUME_UP_DOWN_STEPS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -104,6 +107,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     "entry_id": entry.entry_id,
                     CONF_BUTTONS: entry.data.get(CONF_BUTTONS),
                     CONF_UNIQUE_ID: entry.data.get(CONF_UNIQUE_ID),
+                    CONF_ENABLED_PLATFORMS: entry.data.get(CONF_ENABLED_PLATFORMS),
                 },
             )
 
@@ -409,14 +413,37 @@ class StreamDeckButton:
                 return
 
             # Toggle entity
-            asyncio.run_coroutine_threadsafe(
-                self.hass.services.async_call(
-                    state.domain,
-                    SERVICE_TOGGLE,
-                    target={CONF_ENTITY_ID: self.entity},
-                ),
-                self.hass.loop,
-            )
+            if state.domain == climate.DOMAIN:
+                if (
+                    state.attributes.get(climate.ATTR_HVAC_MODE)
+                    == climate.HVAC_MODE_OFF
+                ):
+                    asyncio.run_coroutine_threadsafe(
+                        self.hass.services.async_call(
+                            state.domain,
+                            climate.SERVICE_TURN_ON,
+                            target={CONF_ENTITY_ID: self.entity},
+                        ),
+                        self.hass.loop,
+                    )
+                else:
+                    asyncio.run_coroutine_threadsafe(
+                        self.hass.services.async_call(
+                            state.domain,
+                            climate.SERVICE_TURN_OFF,
+                            target={CONF_ENTITY_ID: self.entity},
+                        ),
+                        self.hass.loop,
+                    )
+            else:
+                asyncio.run_coroutine_threadsafe(
+                    self.hass.services.async_call(
+                        state.domain,
+                        SERVICE_TOGGLE,
+                        target={CONF_ENTITY_ID: self.entity},
+                    ),
+                    self.hass.loop,
+                )
 
             # Save last pressed entity to use for UP and DOWN buttons
             self.hass.data[DOMAIN][self.entry_id][DATA_CURRENT_ENTITY] = self.entity
@@ -499,6 +526,34 @@ class StreamDeckButton:
                         SERVICE_SET_TEMPERATURE,
                         target={CONF_ENTITY_ID: state.entity_id},
                         service_data={ATTR_TEMPERATURE: temperature},
+                    ),
+                    self.hass.loop,
+                )
+            elif state.domain == Platform.MEDIA_PLAYER:
+                # Get current volume
+                volume = state.attributes.get(ATTR_MEDIA_VOLUME_LEVEL)
+                if not isinstance(temperature, int):
+                    # If media_player device is not on
+                    _LOGGER.debug(
+                        "Method StreamDeckButton.button_pressed: %s has no %s",
+                        state.entity_id,
+                        ATTR_MEDIA_VOLUME_LEVEL,
+                    )
+                    return
+
+                # Update temperature
+                if self.button_type == ButtonType.PLUS_BUTTON:
+                    volume = volume + VOLUME_UP_DOWN_STEPS
+                elif self.button_type == ButtonType.MINUS_BUTTON:
+                    volume = volume - VOLUME_UP_DOWN_STEPS
+
+                # Write new temperature
+                asyncio.run_coroutine_threadsafe(
+                    self.hass.services.async_call(
+                        state.domain,
+                        SERVICE_VOLUME_SET,
+                        target={CONF_ENTITY_ID: state.entity_id},
+                        service_data={ATTR_MEDIA_VOLUME_LEVEL: volume},
                     ),
                     self.hass.loop,
                 )
