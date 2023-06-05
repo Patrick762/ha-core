@@ -155,6 +155,7 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
         """Create the options flow."""
         return OptionsFlowHandler(config_entry)
 
+
 class OptionsFlowHandler(OptionsFlow):
     """Handle a option flow."""
 
@@ -167,16 +168,24 @@ class OptionsFlowHandler(OptionsFlow):
     ) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
-            return self.async_create_entry(title=f"{user_input[CONF_NAME]} at {user_input[CONF_HOST]}", data=user_input)
+            return self.async_create_entry(
+                title=f"{user_input[CONF_NAME]} at {user_input[CONF_HOST]}",
+                data=user_input,
+            )
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_SHOW_NAME, default=user_input.get(CONF_SHOW_NAME, True)): selector.BooleanSelector(),
+                    vol.Required(
+                        CONF_SHOW_NAME,
+                        default=self.config_entry.data.get(CONF_SHOW_NAME, True),
+                    ): selector.BooleanSelector(),
                     vol.Required(
                         CONF_ENABLED_PLATFORMS,
-                        default=user_input.get(CONF_ENABLED_PLATFORMS, DEFAULT_PLATFORMS),
+                        default=self.config_entry.data.get(
+                            CONF_ENABLED_PLATFORMS, DEFAULT_PLATFORMS
+                        ),
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=AVAILABLE_PLATFORMS,
