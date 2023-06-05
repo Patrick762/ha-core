@@ -43,7 +43,7 @@ DEFAULT_ICONS = {
     Platform.SWITCH: "mdi:toggle-switch-variant",
     Platform.VACUUM: "mdi:vacuum",
 }
-UP_DOWN_PLATFORMS = [climate.DOMAIN, Platform.LIGHT]
+UP_DOWN_PLATFORMS = [climate.DOMAIN, Platform.LIGHT, Platform.MEDIA_PLAYER]
 LIGHT_UP_DOWN_STEPS = 15
 CLIMATE_UP_DOWN_STEPS = 5
 VOLUME_UP_DOWN_STEPS = 0.1

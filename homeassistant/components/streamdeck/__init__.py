@@ -33,6 +33,7 @@ from homeassistant.const import (
     SERVICE_VOLUME_SET,
     STATE_OFF,
     STATE_ON,
+    STATE_STANDBY,
     STATE_UNAVAILABLE,
     Platform,
 )
@@ -650,7 +651,7 @@ class StreamDeckButton:
         modifier_color = COLOR_MODIFIER
         if state.state == STATE_UNAVAILABLE:
             icon_color = COLOR_UNAVAILABLE
-        elif state.state == STATE_ON:
+        elif state.state == STATE_ON or (state.domain == Platform.MEDIA_PLAYER and state.state == STATE_STANDBY):
             icon_color = COLOR_ON
         elif state.state == STATE_OFF:
             icon_color = COLOR_OFF
