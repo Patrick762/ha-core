@@ -669,6 +669,11 @@ ZEROCONF = {
             "name": "smappee50*",
         },
     ],
+    "_stream-deck-api._tcp.local.": [
+        {
+            "domain": "streamdeck",
+        },
+    ],
     "_system-bridge._tcp.local.": [
         {
             "domain": "system_bridge",

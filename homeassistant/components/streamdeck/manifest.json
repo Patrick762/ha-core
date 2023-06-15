@@ -15,5 +15,6 @@
     {
       "deviceType": "urn:home-assistant-device:stream-deck"
     }
-  ]
+  ],
+  "zeroconf": ["_stream-deck-api._tcp.local."]
 }

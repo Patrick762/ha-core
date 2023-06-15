@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from streamdeckapi import SDDevice, SDInfo, StreamDeckApi, get_model
 import voluptuous as vol
 
-from homeassistant.components import ssdp
+from homeassistant.components import ssdp, zeroconf
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_MODEL, CONF_NAME, CONF_UNIQUE_ID
 from homeassistant.data_entry_flow import FlowResult
@@ -52,6 +52,24 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
         location = discovery_info.ssdp_location
         hostname = urlparse(location).hostname
         _LOGGER.debug("SSDP found. Location: %s", location)
+        if not isinstance(hostname, str):
+            return self.async_abort(reason="no_hostname")
+        self.host = hostname
+        info = await self._get_unique_id()
+        if not isinstance(info, SDInfo):
+            return self.async_abort(reason="no_streamdeck")
+        _LOGGER.info(
+            "Found Streamdeck at host %s with unique_id %s", self.host, self.unique_id
+        )
+        return self.async_show_form(step_id="user")
+
+    # TODO test
+    async def async_step_zeroconf(
+        self, discovery_info: zeroconf.ZeroconfServiceInfo
+    ) -> FlowResult:
+        """Handle zeroconf discovery flow."""
+        hostname = discovery_info.host
+        _LOGGER.debug("Zeroconf found. Hostname: %s", hostname)
         if not isinstance(hostname, str):
             return self.async_abort(reason="no_hostname")
         self.host = hostname
