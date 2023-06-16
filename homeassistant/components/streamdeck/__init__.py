@@ -181,6 +181,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Register update listener for options flow updates
+    entry.async_on_unload(entry.add_update_listener(update_listener))
+
     # Fill config entry with buttons
     button_entries = {}
     for _, button_info in info.buttons.items():
@@ -225,6 +228,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     ):
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
+
+
+async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
+    """Handle options update."""
+    hass.data[DOMAIN][entry.entry_id][CONF_SHOW_NAME] = entry.data.get(CONF_SHOW_NAME)
+    StreamDeckButton.update_all_button_icons(hass, entry.entry_id)
 
 
 #

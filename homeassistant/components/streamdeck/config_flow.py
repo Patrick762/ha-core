@@ -63,7 +63,6 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         return self.async_show_form(step_id="user")
 
-    # TODO test
     async def async_step_zeroconf(
         self, discovery_info: zeroconf.ZeroconfServiceInfo
     ) -> FlowResult:
@@ -186,9 +185,27 @@ class OptionsFlowHandler(OptionsFlow):
     ) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
+            changed = self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data={
+                    **self.config_entry.data,
+                    **{
+                        CONF_SHOW_NAME: user_input[CONF_SHOW_NAME],
+                        CONF_ENABLED_PLATFORMS: user_input[CONF_ENABLED_PLATFORMS],
+                    },
+                },
+            )
+            if changed is False:
+                _LOGGER.error(
+                    "Method OptionsFlowHandler.async_step_init: Config entry %s has not been changed",
+                    self.config_entry.entry_id,
+                )
             return self.async_create_entry(
-                title=f"{user_input[CONF_NAME]} at {user_input[CONF_HOST]}",
-                data=user_input,
+                title="",
+                data={
+                    CONF_SHOW_NAME: user_input[CONF_SHOW_NAME],
+                    CONF_ENABLED_PLATFORMS: user_input[CONF_ENABLED_PLATFORMS],
+                },
             )
 
         return self.async_show_form(
