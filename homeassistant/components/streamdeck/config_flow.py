@@ -38,11 +38,12 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
             self.unique_id = self.host
             return None
         self.unique_id = self.host
-        devices: list[SDDevice] = info.devices
-        for device in devices:
-            if isinstance(device, SDDevice):
-                self.unique_id = f"{self.unique_id}|{device.id}"
+        #devices: list[SDDevice] = info.devices
+        #for device in devices:
+        #    if isinstance(device, SDDevice):
+        #        self.unique_id = f"{self.unique_id}|{device.id}"
         # Prevent duplicates
+        _LOGGER.warning("Setting unique id to %s", self.unique_id)
         await self.async_set_unique_id(self.unique_id)
         self._abort_if_unique_id_configured()
         return info
@@ -56,6 +57,9 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_hostname")
         self.host = hostname
         info = await self._get_unique_id()
+
+        await self.async_set_unique_id(self.unique_id)
+
         if not isinstance(info, SDInfo):
             return self.async_abort(reason="no_streamdeck")
         _LOGGER.info(
@@ -73,6 +77,9 @@ class StreamDeckConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="no_hostname")
         self.host = hostname
         info = await self._get_unique_id()
+
+        await self.async_set_unique_id(self.unique_id)
+
         if not isinstance(info, SDInfo):
             return self.async_abort(reason="no_streamdeck")
         _LOGGER.info(

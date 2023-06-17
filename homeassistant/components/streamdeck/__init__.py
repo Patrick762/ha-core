@@ -175,7 +175,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Check if Stream Deck is available
     info = await api.get_info()
-    if isinstance(info, bool):
+    if info is None:
         _LOGGER.error("Stream Deck not available at %s", api.host)
         raise ConfigEntryNotReady(f"Timeout while connecting to {api.host}")
 
