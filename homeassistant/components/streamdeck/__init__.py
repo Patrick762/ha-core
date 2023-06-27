@@ -487,7 +487,7 @@ class StreamDeckButton:
             self.hass.data[DOMAIN][self.entry_id][DATA_CURRENT_ENTITY] = self.entity
 
             # Update icons for UP and DOWN buttons (updates all buttons, in case there are multiple)
-            # TODO too slow for Raspberry Pi Zero Server
+            # FIXME too slow for Raspberry Pi Zero Server
             StreamDeckButton.update_all_button_icons(self.hass, self.entry_id)
 
         if self.button_type in (ButtonType.PLUS_BUTTON, ButtonType.MINUS_BUTTON):
@@ -700,12 +700,6 @@ class StreamDeckButton:
         elif state.state == STATE_OFF:
             icon_color = COLOR_OFF
 
-        # Use color of rgb led as icon color for lights
-        # if state.domain == Platform.LIGHT:
-        #    rgb_color = state.attributes.get("rgb_color")
-        #    if isinstance(rgb_color, tuple):
-        #        icon_color = f"#{rgb_color[0]:02x}{rgb_color[1]:02x}{rgb_color[2]:02x}"
-
         # Set icon color for Plus and Minus buttons
         if self.button_type in (ButtonType.PLUS_BUTTON, ButtonType.MINUS_BUTTON):
             icon_color = COLOR_ACTIVE
@@ -758,10 +752,34 @@ class StreamDeckButton:
                     <g transform="translate(14, 14) scale(0.5)">{mdi}</g>
                     </svg>"""
             elif self.button_type == ButtonType.ENTITY_BUTTON:
-                # TODO: Use brightness percent as state for lights
+                state_text = (
+                    f'{state.state}{state.attributes.get(ATTR_UNIT_OF_MEASUREMENT, "")}'
+                )
+
+                if (
+                    state.domain == Platform.LIGHT
+                    and state.attributes.get(CONF_BRIGHTNESS) is not None
+                ):
+                    brightness = state.attributes.get(CONF_BRIGHTNESS)
+                    brightness_pct = int(math_map(brightness, 0, 255, 0, 100))
+                    state_text = f"{brightness_pct}%"
+                elif (
+                    state.domain == climate.DOMAIN
+                    and state.attributes.get(ATTR_TEMPERATURE) is not None
+                ):
+                    temperature = state.attributes.get(ATTR_TEMPERATURE)
+                    state_text = f"{temperature}°C"
+                elif (
+                    state.domain == Platform.MEDIA_PLAYER
+                    and state.attributes.get(ATTR_MEDIA_VOLUME_LEVEL) is not None
+                ):
+                    volume = state.attributes.get(ATTR_MEDIA_VOLUME_LEVEL)
+                    volume_pct = int(math_map(volume, 0, 1, 0, 100))
+                    state_text = f"{volume_pct}%"
+
                 svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
                     <rect width="72" height="72" fill="#000" />
-                    <text text-anchor="middle" x="35" y="15" fill="#fff" font-size="12">{state.state}{state.attributes.get(ATTR_UNIT_OF_MEASUREMENT, "")}</text>
+                    <text text-anchor="middle" x="35" y="15" fill="#fff" font-size="12">{state_text}</text>
                     <text text-anchor="middle" x="35" y="65" fill="#fff" font-size="12">{state.name}</text>
                     <g transform="translate(16, 12) scale(0.5)">{mdi}</g>
                     </svg>"""
@@ -885,3 +903,11 @@ def on_entity_state_change(hass: HomeAssistant, entry_id: str, event: Event):
         button = StreamDeckButton.from_dict(button_config, hass, entry_id)
         if button.get_entity() == entity_id:
             button.update_icon()
+
+
+# Copy of the arduino map() function (https://www.arduino.cc/reference/en/language/functions/math/map/)
+def math_map(
+    input_x: float, in_min: float, in_max: float, out_min: float, out_max: float
+) -> float:
+    """Map values to range."""
+    return (input_x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
