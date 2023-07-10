@@ -11,12 +11,7 @@ from streamdeckapi import SDWebsocketMessage, StreamDeckApi
 import voluptuous as vol
 
 from homeassistant.components import climate
-from homeassistant.components.climate import (
-    HVAC_MODE_COOL,
-    HVAC_MODE_HEAT,
-    HVAC_MODE_HEAT_COOL,
-    SERVICE_SET_TEMPERATURE,
-)
+from homeassistant.components.climate import SERVICE_SET_TEMPERATURE, HVACMode
 from homeassistant.components.media_player import (
     ATTR_MEDIA_VOLUME_LEVEL,
     SERVICE_MEDIA_PAUSE,
@@ -46,7 +41,7 @@ from homeassistant.const import (
     STATE_UNAVAILABLE,
     Platform,
 )
-from homeassistant.core import Event, HomeAssistant, ServiceCall
+from homeassistant.core import Event, HomeAssistant, ServiceCall, State
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.typing import ConfigType
@@ -121,6 +116,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 },
             )
 
+    # Register services
     hass.services.register(DOMAIN, "sdinfo", sevice_sdinfo, schema=vol.Schema({}))
     hass.services.register(DOMAIN, "dump", sevice_dump, schema=vol.Schema({}))
 
@@ -417,6 +413,152 @@ class StreamDeckButton:
             return None
         return StreamDeckButton.from_dict(button_config, hass, entry_id)
 
+    def toggle_climate(self, state: State):
+        """Toggle climate entity."""
+        if state.attributes.get(climate.ATTR_HVAC_ACTION) == HVACMode.OFF:
+            asyncio.run_coroutine_threadsafe(
+                self.hass.services.async_call(
+                    state.domain,
+                    climate.SERVICE_TURN_ON,
+                    target={CONF_ENTITY_ID: self.entity},
+                ),
+                self.hass.loop,
+            )
+        else:
+            asyncio.run_coroutine_threadsafe(
+                self.hass.services.async_call(
+                    state.domain,
+                    climate.SERVICE_TURN_OFF,
+                    target={CONF_ENTITY_ID: self.entity},
+                ),
+                self.hass.loop,
+            )
+
+    def toggle_media_player(self, state: State):
+        """Toggle media_player entity."""
+        if state.state != STATE_PLAYING:
+            asyncio.run_coroutine_threadsafe(
+                self.hass.services.async_call(
+                    state.domain,
+                    SERVICE_MEDIA_PLAY,
+                    target={CONF_ENTITY_ID: self.entity},
+                ),
+                self.hass.loop,
+            )
+        else:
+            asyncio.run_coroutine_threadsafe(
+                self.hass.services.async_call(
+                    state.domain,
+                    SERVICE_MEDIA_PAUSE,
+                    target={CONF_ENTITY_ID: self.entity},
+                ),
+                self.hass.loop,
+            )
+
+    def light_control(self, state: State):
+        """Handle light controls."""
+
+        # Get current brightness
+        brightness = state.attributes.get(CONF_BRIGHTNESS)
+        if not isinstance(brightness, int):
+            # If light is not on, turn on with smallest brightness
+            asyncio.run_coroutine_threadsafe(
+                self.hass.services.async_call(
+                    state.domain,
+                    SERVICE_TURN_ON,
+                    target={CONF_ENTITY_ID: state.entity_id},
+                    service_data={CONF_BRIGHTNESS: LIGHT_UP_DOWN_STEPS},
+                ),
+                self.hass.loop,
+            )
+            return
+
+        # Update brightness
+        if self.button_type == ButtonType.PLUS_BUTTON:
+            brightness = min(brightness + LIGHT_UP_DOWN_STEPS, 255)
+        elif self.button_type == ButtonType.MINUS_BUTTON:
+            brightness = max(brightness - LIGHT_UP_DOWN_STEPS, 0)
+
+        # Write new brightness
+        asyncio.run_coroutine_threadsafe(
+            self.hass.services.async_call(
+                state.domain,
+                SERVICE_TURN_ON,
+                target={CONF_ENTITY_ID: state.entity_id},
+                service_data={CONF_BRIGHTNESS: brightness},
+            ),
+            self.hass.loop,
+        )
+
+    def climate_control(self, state: State):
+        """Handle climate controls."""
+
+        # Get current temperature
+        temperature = state.attributes.get(ATTR_TEMPERATURE)
+        if not isinstance(temperature, int):
+            # If climate device is not on, turn on
+            asyncio.run_coroutine_threadsafe(
+                self.hass.services.async_call(
+                    state.domain,
+                    SERVICE_SET_TEMPERATURE,
+                    target={CONF_ENTITY_ID: state.entity_id},
+                ),
+                self.hass.loop,
+            )
+            return
+
+        # Update temperature
+        if self.button_type == ButtonType.PLUS_BUTTON:
+            temperature = temperature + CLIMATE_UP_DOWN_STEPS
+        elif self.button_type == ButtonType.MINUS_BUTTON:
+            temperature = temperature - CLIMATE_UP_DOWN_STEPS
+
+        # Write new temperature
+        asyncio.run_coroutine_threadsafe(
+            self.hass.services.async_call(
+                state.domain,
+                SERVICE_SET_TEMPERATURE,
+                target={CONF_ENTITY_ID: state.entity_id},
+                service_data={ATTR_TEMPERATURE: temperature},
+            ),
+            self.hass.loop,
+        )
+
+    def media_player_control(self, state: State):
+        """Handle media_player controls."""
+
+        # Get current volume
+        volume = state.attributes.get(ATTR_MEDIA_VOLUME_LEVEL)
+        if not isinstance(volume, float):
+            # If media_player device is not on, turn on with smallest volume
+            asyncio.run_coroutine_threadsafe(
+                self.hass.services.async_call(
+                    state.domain,
+                    SERVICE_VOLUME_SET,
+                    target={CONF_ENTITY_ID: state.entity_id},
+                    service_data={ATTR_MEDIA_VOLUME_LEVEL: VOLUME_UP_DOWN_STEPS},
+                ),
+                self.hass.loop,
+            )
+            return
+
+        # Update volume
+        if self.button_type == ButtonType.PLUS_BUTTON:
+            volume = min(volume + VOLUME_UP_DOWN_STEPS, 1)
+        elif self.button_type == ButtonType.MINUS_BUTTON:
+            volume = max(volume - VOLUME_UP_DOWN_STEPS, 0)
+
+        # Write new volume
+        asyncio.run_coroutine_threadsafe(
+            self.hass.services.async_call(
+                state.domain,
+                SERVICE_VOLUME_SET,
+                target={CONF_ENTITY_ID: state.entity_id},
+                service_data={ATTR_MEDIA_VOLUME_LEVEL: volume},
+            ),
+            self.hass.loop,
+        )
+
     def button_pressed(self):
         """Handle button press."""
 
@@ -433,46 +575,9 @@ class StreamDeckButton:
 
             # Toggle entity
             if state.domain == climate.DOMAIN:
-                if (
-                    state.attributes.get(climate.ATTR_HVAC_ACTION)
-                    == climate.HVAC_MODE_OFF
-                ):
-                    asyncio.run_coroutine_threadsafe(
-                        self.hass.services.async_call(
-                            state.domain,
-                            climate.SERVICE_TURN_ON,
-                            target={CONF_ENTITY_ID: self.entity},
-                        ),
-                        self.hass.loop,
-                    )
-                else:
-                    asyncio.run_coroutine_threadsafe(
-                        self.hass.services.async_call(
-                            state.domain,
-                            climate.SERVICE_TURN_OFF,
-                            target={CONF_ENTITY_ID: self.entity},
-                        ),
-                        self.hass.loop,
-                    )
+                self.toggle_climate(state)
             elif state.domain == Platform.MEDIA_PLAYER:
-                if state.state != STATE_PLAYING:
-                    asyncio.run_coroutine_threadsafe(
-                        self.hass.services.async_call(
-                            state.domain,
-                            SERVICE_MEDIA_PLAY,
-                            target={CONF_ENTITY_ID: self.entity},
-                        ),
-                        self.hass.loop,
-                    )
-                else:
-                    asyncio.run_coroutine_threadsafe(
-                        self.hass.services.async_call(
-                            state.domain,
-                            SERVICE_MEDIA_PAUSE,
-                            target={CONF_ENTITY_ID: self.entity},
-                        ),
-                        self.hass.loop,
-                    )
+                self.toggle_media_player(state)
             else:
                 asyncio.run_coroutine_threadsafe(
                     self.hass.services.async_call(
@@ -487,7 +592,6 @@ class StreamDeckButton:
             self.hass.data[DOMAIN][self.entry_id][DATA_CURRENT_ENTITY] = self.entity
 
             # Update icons for UP and DOWN buttons (updates all buttons, in case there are multiple)
-            # FIXME too slow for Raspberry Pi Zero Server
             StreamDeckButton.update_all_button_icons(self.hass, self.entry_id)
 
         if self.button_type in (ButtonType.PLUS_BUTTON, ButtonType.MINUS_BUTTON):
@@ -512,89 +616,11 @@ class StreamDeckButton:
 
             # Handle Light Platform
             if state.domain == Platform.LIGHT:
-                # Get current brightness
-                brightness = state.attributes.get(CONF_BRIGHTNESS)
-                if not isinstance(brightness, int):
-                    # If light is not on
-                    _LOGGER.debug(
-                        "Method StreamDeckButton.button_pressed: %s has no %s",
-                        state.entity_id,
-                        CONF_BRIGHTNESS,
-                    )
-                    return
-
-                # Update brightness
-                if self.button_type == ButtonType.PLUS_BUTTON:
-                    brightness = brightness + LIGHT_UP_DOWN_STEPS
-                elif self.button_type == ButtonType.MINUS_BUTTON:
-                    brightness = brightness - LIGHT_UP_DOWN_STEPS
-
-                # Write new brightness
-                asyncio.run_coroutine_threadsafe(
-                    self.hass.services.async_call(
-                        state.domain,
-                        SERVICE_TURN_ON,
-                        target={CONF_ENTITY_ID: state.entity_id},
-                        service_data={CONF_BRIGHTNESS: brightness},
-                    ),
-                    self.hass.loop,
-                )
+                self.light_control(state)
             elif state.domain == climate.DOMAIN:
-                # Get current temperature
-                temperature = state.attributes.get(ATTR_TEMPERATURE)
-                if not isinstance(temperature, int):
-                    # If climate device is not on
-                    _LOGGER.debug(
-                        "Method StreamDeckButton.button_pressed: %s has no %s",
-                        state.entity_id,
-                        CONF_BRIGHTNESS,
-                    )
-                    return
-
-                # Update temperature
-                if self.button_type == ButtonType.PLUS_BUTTON:
-                    temperature = temperature + CLIMATE_UP_DOWN_STEPS
-                elif self.button_type == ButtonType.MINUS_BUTTON:
-                    temperature = temperature - CLIMATE_UP_DOWN_STEPS
-
-                # Write new temperature
-                asyncio.run_coroutine_threadsafe(
-                    self.hass.services.async_call(
-                        state.domain,
-                        SERVICE_SET_TEMPERATURE,
-                        target={CONF_ENTITY_ID: state.entity_id},
-                        service_data={ATTR_TEMPERATURE: temperature},
-                    ),
-                    self.hass.loop,
-                )
+                self.climate_control(state)
             elif state.domain == Platform.MEDIA_PLAYER:
-                # Get current volume
-                volume = state.attributes.get(ATTR_MEDIA_VOLUME_LEVEL)
-                if not isinstance(volume, float):
-                    # If media_player device is not on
-                    _LOGGER.debug(
-                        "Method StreamDeckButton.button_pressed: %s has no %s",
-                        state.entity_id,
-                        ATTR_MEDIA_VOLUME_LEVEL,
-                    )
-                    return
-
-                # Update temperature
-                if self.button_type == ButtonType.PLUS_BUTTON:
-                    volume = volume + VOLUME_UP_DOWN_STEPS
-                elif self.button_type == ButtonType.MINUS_BUTTON:
-                    volume = volume - VOLUME_UP_DOWN_STEPS
-
-                # Write new temperature
-                asyncio.run_coroutine_threadsafe(
-                    self.hass.services.async_call(
-                        state.domain,
-                        SERVICE_VOLUME_SET,
-                        target={CONF_ENTITY_ID: state.entity_id},
-                        service_data={ATTR_MEDIA_VOLUME_LEVEL: volume},
-                    ),
-                    self.hass.loop,
-                )
+                self.media_player_control(state)
 
     @staticmethod
     def update_all_button_icons(hass: HomeAssistant, entry_id: str):
@@ -693,7 +719,7 @@ class StreamDeckButton:
             or (state.domain == Platform.MEDIA_PLAYER and state.state != STATE_OFF)
             or (
                 state.domain == climate.DOMAIN
-                and state.state in (HVAC_MODE_HEAT, HVAC_MODE_HEAT_COOL, HVAC_MODE_COOL)
+                and state.state in (HVACMode.HEAT, HVACMode.HEAT_COOL, HVACMode.COOL)
             )
         ):
             icon_color = COLOR_ON
