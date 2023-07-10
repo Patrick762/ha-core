@@ -365,6 +365,14 @@ def climate_adc_t3000_state_fixture():
     return json.loads(load_fixture("zwave_js/climate_adc_t3000_state.json"))
 
 
+@pytest.fixture(name="climate_airzone_aidoo_control_hvac_unit_state", scope="session")
+def climate_airzone_aidoo_control_hvac_unit_state_fixture():
+    """Load the climate Airzone Aidoo Control HVAC Unit state fixture data."""
+    return json.loads(
+        load_fixture("zwave_js/climate_airzone_aidoo_control_hvac_unit_state.json")
+    )
+
+
 @pytest.fixture(name="climate_danfoss_lc_13_state", scope="session")
 def climate_danfoss_lc_13_state_fixture():
     """Load Danfoss (LC-13) electronic radiator thermostat node state fixture data."""
@@ -636,6 +644,12 @@ def energy_production_state_fixture():
     return json.loads(load_fixture("zwave_js/energy_production_state.json"))
 
 
+@pytest.fixture(name="nice_ibt4zwave_state", scope="session")
+def nice_ibt4zwave_state_fixture():
+    """Load a Nice IBT4ZWAVE cover node state fixture data."""
+    return json.loads(load_fixture("zwave_js/cover_nice_ibt4zwave_state.json"))
+
+
 # model fixtures
 
 
@@ -816,6 +830,16 @@ def climate_adc_t3000_missing_fan_mode_states_fixture(client, climate_adc_t3000_
         ):
             del value["metadata"]["states"]
     node = Node(client, data)
+    client.driver.controller.nodes[node.node_id] = node
+    return node
+
+
+@pytest.fixture(name="climate_airzone_aidoo_control_hvac_unit")
+def climate_airzone_aidoo_control_hvac_unit_fixture(
+    client, climate_airzone_aidoo_control_hvac_unit_state
+):
+    """Mock a climate Airzone Aidoo Control HVAC node."""
+    node = Node(client, copy.deepcopy(climate_airzone_aidoo_control_hvac_unit_state))
     client.driver.controller.nodes[node.node_id] = node
     return node
 
@@ -1214,8 +1238,16 @@ def indicator_test_fixture(client, indicator_test_state):
 
 
 @pytest.fixture(name="energy_production")
-def energy_prodution_fixture(client, energy_production_state):
+def energy_production_fixture(client, energy_production_state):
     """Mock a mock node with Energy Production CC."""
     node = Node(client, copy.deepcopy(energy_production_state))
+    client.driver.controller.nodes[node.node_id] = node
+    return node
+
+
+@pytest.fixture(name="nice_ibt4zwave")
+def nice_ibt4zwave_fixture(client, nice_ibt4zwave_state):
+    """Mock a Nice IBT4ZWAVE cover node."""
+    node = Node(client, copy.deepcopy(nice_ibt4zwave_state))
     client.driver.controller.nodes[node.node_id] = node
     return node
