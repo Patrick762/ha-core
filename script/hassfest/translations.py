@@ -40,6 +40,7 @@ ALLOW_NAME_TRANSLATION = {
     "nmap_tracker",
     "rpi_power",
     "waze_travel_time",
+    "zodiac",
 }
 
 REMOVED_TITLE_MSG = (
@@ -60,8 +61,9 @@ def allow_name_translation(integration: Integration) -> bool:
     """Validate that the translation name is not the same as the integration name."""
     # Only enforce for core because custom integrations can't be
     # added to allow list.
-    return integration.core and (
-        integration.domain in ALLOW_NAME_TRANSLATION
+    return (
+        not integration.core
+        or integration.domain in ALLOW_NAME_TRANSLATION
         or integration.quality_scale == "internal"
     )
 
@@ -324,6 +326,21 @@ def gen_strings_schema(config: Config, integration: Integration) -> vol.Schema:
                     slug_validator=translation_key_validator,
                 ),
                 slug_validator=cv.slug,
+            ),
+            vol.Optional("services"): cv.schema_with_slug_keys(
+                {
+                    vol.Required("name"): translation_value_validator,
+                    vol.Required("description"): translation_value_validator,
+                    vol.Optional("fields"): cv.schema_with_slug_keys(
+                        {
+                            vol.Required("name"): str,
+                            vol.Required("description"): translation_value_validator,
+                            vol.Optional("example"): translation_value_validator,
+                        },
+                        slug_validator=translation_key_validator,
+                    ),
+                },
+                slug_validator=translation_key_validator,
             ),
         }
     )

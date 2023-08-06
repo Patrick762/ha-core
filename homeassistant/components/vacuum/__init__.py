@@ -1,6 +1,7 @@
 """Support for vacuum cleaner robots (botvacs)."""
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
@@ -22,8 +23,8 @@ from homeassistant.const import (  # noqa: F401 # STATE_PAUSED/IDLE are API
     STATE_ON,
     STATE_PAUSED,
 )
-from homeassistant.core import HomeAssistant
-import homeassistant.helpers.config_validation as cv
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import config_validation as cv, issue_registry as ir
 from homeassistant.helpers.config_validation import (  # noqa: F401
     PLATFORM_SCHEMA,
     PLATFORM_SCHEMA_BASE,
@@ -36,6 +37,7 @@ from homeassistant.helpers.entity import (
     ToggleEntityDescription,
 )
 from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.entity_platform import EntityPlatform
 from homeassistant.helpers.icon import icon_for_battery_level
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import bind_hass
@@ -367,6 +369,45 @@ class VacuumEntityDescription(ToggleEntityDescription):
 class VacuumEntity(_BaseVacuum, ToggleEntity):
     """Representation of a vacuum cleaner robot."""
 
+    @callback
+    def add_to_platform_start(
+        self,
+        hass: HomeAssistant,
+        platform: EntityPlatform,
+        parallel_updates: asyncio.Semaphore | None,
+    ) -> None:
+        """Start adding an entity to a platform."""
+        super().add_to_platform_start(hass, platform, parallel_updates)
+        # Don't report core integrations known to still use the deprecated base class;
+        # we don't worry about demo and mqtt has it's own deprecation warnings.
+        if self.platform.platform_name in ("demo", "mqtt"):
+            return
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            f"deprecated_vacuum_base_class_{self.platform.platform_name}",
+            breaks_in_ha_version="2024.2.0",
+            is_fixable=False,
+            is_persistent=False,
+            issue_domain=self.platform.platform_name,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="deprecated_vacuum_base_class",
+            translation_placeholders={
+                "platform": self.platform.platform_name,
+            },
+        )
+        _LOGGER.warning(
+            (
+                "%s::%s is extending the deprecated base class VacuumEntity instead of "
+                "StateVacuumEntity, this is not valid and will be unsupported "
+                "from Home Assistant 2024.2. Please report it to the author of the '%s'"
+                " custom integration"
+            ),
+            self.platform.platform_name,
+            self.__class__.__name__,
+            self.platform.platform_name,
+        )
+
     entity_description: VacuumEntityDescription
     _attr_status: str | None = None
 
@@ -429,12 +470,6 @@ class VacuumEntity(_BaseVacuum, ToggleEntity):
         """
         await self.hass.async_add_executor_job(partial(self.start_pause, **kwargs))
 
-    async def async_pause(self) -> None:
-        """Not supported."""
-
-    async def async_start(self) -> None:
-        """Not supported."""
-
 
 @dataclass
 class StateVacuumEntityDescription(EntityDescription):
@@ -482,12 +517,3 @@ class StateVacuumEntity(_BaseVacuum):
         This method must be run in the event loop.
         """
         await self.hass.async_add_executor_job(self.pause)
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Not supported."""
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Not supported."""
-
-    async def async_toggle(self, **kwargs: Any) -> None:
-        """Not supported."""
